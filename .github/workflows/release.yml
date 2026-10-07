@@ -1,0 +1,143 @@
+name: Guide Linux release
+# Prepared for a FUTURE tag push; no manual publishing entry point.
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: read
+concurrency:
+  group: guide-release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  verify-and-package:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+        working-directory: guide
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Verify tag and all product versions
+        working-directory: .
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re, tomllib
+          from pathlib import Path
+          version = tomllib.loads(Path('guide/Cargo.toml').read_text())['package']['version']
+          tag = os.environ['RELEASE_TAG']
+          if not re.fullmatch(r'v\d+\.\d+\.\d+(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?', tag):
+              raise SystemExit('Unsupported version tag')
+          if tag != 'v' + version:
+              raise SystemExit('Tag must match Cargo.toml version')
+          for base in ['guide/web-admin', 'navigation-theme']:
+              for filename in ['package.json', 'package-lock.json']:
+                  data = json.loads(Path(base, filename).read_text())
+                  if data['version'] != version:
+                      raise SystemExit(f'{base}/{filename}: version mismatch')
+                  if filename == 'package-lock.json' and data['packages']['']['version'] != version:
+                      raise SystemExit(f'{base}/{filename}: root package version mismatch')
+          if json.loads(Path('navigation-theme/theme.json').read_text())['version'] != version:
+              raise SystemExit('theme.json: version mismatch')
+          lock = tomllib.loads(Path('guide/Cargo.lock').read_text())
+          if not any(p['name'] == 'guide-hub' and p['version'] == version for p in lock['package']):
+              raise SystemExit('Cargo.lock: Guide version mismatch')
+          PY
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            guide/web-admin/package-lock.json
+            navigation-theme/package-lock.json
+      - uses: dtolnay/rust-toolchain@1.99.0
+        with:
+          components: rustfmt
+          targets: x86_64-unknown-linux-gnu
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: guide -> target
+          shared-key: guide-linux-x86_64
+      - name: Admin lint, tests and production build
+        working-directory: guide/web-admin
+        run: |
+          npm ci
+          npm run lint
+          npm test
+          npm run build
+      - name: Navigation lint, tests and production build
+        working-directory: navigation-theme
+        run: |
+          npm ci
+          npm run lint
+          npm test
+          npm run build
+      - name: Rust formatting
+        run: cargo fmt --all --check
+      - name: Full Rust tests including Auth and migrations
+        run: cargo test --locked
+      - name: Build Linux x86_64
+        run: cargo build --release --locked --target x86_64-unknown-linux-gnu
+      - name: Verify embedded assets and assemble a clean archive
+        working-directory: .
+        run: |
+          test -s guide/web-admin/dist/index.html
+          test -s navigation-theme/dist/index.html
+          test -s guide/target/theme/theme.json
+          file guide/target/x86_64-unknown-linux-gnu/release/guide-hub
+          file guide/target/x86_64-unknown-linux-gnu/release/guide-hub | grep -q 'ELF 64-bit.*x86-64'
+          # Both frontends are embedded by rust-embed.
+          # Explicit inputs: never archive a checkout or runtime directory.
+          mkdir -p release-artifacts/package
+          install -m 0755 guide/target/x86_64-unknown-linux-gnu/release/guide-hub release-artifacts/package/guide-hub
+          install -m 0644 LICENSE release-artifacts/package/LICENSE
+          install -m 0644 THIRD_PARTY_NOTICES.md release-artifacts/package/THIRD_PARTY_NOTICES.md
+          install -m 0644 docs/THIRD_PARTY_LICENSES.md release-artifacts/package/THIRD_PARTY_LICENSES.md
+          install -m 0644 docs/deployment/INSTALL.md release-artifacts/package/INSTALL.md
+          install -m 0644 docs/deployment/AUTH_RECOVERY.md release-artifacts/package/AUTH_RECOVERY.md
+          install -m 0644 docs/deployment/guide.service release-artifacts/package/guide.service
+          tar -czf release-artifacts/guide-linux-x86_64.tar.gz -C release-artifacts/package \
+            guide-hub LICENSE THIRD_PARTY_NOTICES.md THIRD_PARTY_LICENSES.md INSTALL.md AUTH_RECOVERY.md guide.service
+          cd release-artifacts
+          sha256sum guide-linux-x86_64.tar.gz > guide-linux-x86_64.tar.gz.sha256
+          sha256sum --check guide-linux-x86_64.tar.gz.sha256
+          tar -tzf guide-linux-x86_64.tar.gz
+      - uses: actions/upload-artifact@v7
+        with:
+          name: guide-linux-x86_64
+          path: |
+            release-artifacts/guide-linux-x86_64.tar.gz
+            release-artifacts/guide-linux-x86_64.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 14
+  publish:
+    needs: verify-and-package
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: guide-linux-x86_64
+          path: release-artifacts
+      - name: Verify SHA-256 and publish only verified files
+        working-directory: release-artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          sha256sum --check guide-linux-x86_64.tar.gz.sha256
+          args=(--verify-tag --generate-notes)
+          if [[ "$RELEASE_TAG" == *-* ]]; then args+=(--prerelease); fi
+          gh release create "$RELEASE_TAG" guide-linux-x86_64.tar.gz \
+            guide-linux-x86_64.tar.gz.sha256 "${args[@]}"

@@ -1,0 +1,6 @@
+title = "Guide secret scanning"
+
+[extend]
+useDefault = true
+
+# Standard secret detection rules; no credential allowlist.

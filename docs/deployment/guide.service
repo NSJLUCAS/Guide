@@ -1,0 +1,28 @@
+# Manual deployment example only. Nothing installs or starts this unit.
+# Before using it, build Guide, manually create the guide user/group and
+# /var/lib/guide with suitable ownership, and place the binary at the path below.
+# Review the listen address and reverse proxy before installing the unit.
+[Unit]
+Description=Guide navigation hub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=guide
+Group=guide
+WorkingDirectory=/opt/guide
+ExecStart=/opt/guide/guide-hub --listen 127.0.0.1:28080 --db /var/lib/guide/guide.db
+Restart=on-failure
+RestartSec=5
+ReadWritePaths=/var/lib/guide
+NoNewPrivileges=yes
+RestrictSUIDSGID=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,7 @@
+# Keep POSIX shell scripts and the upstream provenance pin usable on Linux.
+*.sh text eol=lf
+*.pin text eol=lf
+*.service text eol=lf
+*.yml text eol=lf
+# This archived installer is preserved byte-for-byte as an upstream reference.
+guide/compat/upstream/install-hub.sh -text
