@@ -36,6 +36,7 @@ cookie-jar*
 /Snipaste_*.jpg
 /Snipaste_*.png
 **/artifacts-v33/
+**/artifacts-public/
 **/tests/screenshots/
 tmp/
 temp/

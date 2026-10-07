@@ -748,4 +748,4 @@ PostCSS8.5.29、nanoid3.3.20 为 MIT；source-map-js1.2.2 为 BSD-3-Clause，均
 
 来源：[PostCSS8.5.29](https://registry.npmjs.org/postcss/8.5.29)、[source-map-js1.2.2](https://registry.npmjs.org/source-map-js/1.2.2)、[nanoid3.3.20](https://registry.npmjs.org/nanoid/3.3.20)、[Slot1.3.3](https://registry.npmjs.org/@radix-ui/react-slot/1.3.3)。
 
-**维护者已接受的精确许可证据风险：后台 react-remove-scroll-bar2.3.8。** npm metadata 声明 MIT；官方精确包的 LICENSE/copyright 正文未取得完整核验。当前维护者于2026-10-07明确知晓并接受该公开风险，不作为Guide 1.0.0发布blocker。不声称已完成精确许可核验，不伪造或冒用其他版本版权正文。
+**精确许可证据缺口：后台 react-remove-scroll-bar2.3.8。** npm metadata 声明 MIT；官方精确 tarball 未包含完整 LICENSE/copyright 正文，精确版本许可与版权核验仍不完整。不声称已完成精确许可核验，不伪造或冒用其他版本版权正文。

@@ -14,9 +14,16 @@ Guide 是一个网站与服务导航门户：用紧凑卡片查看服务、在�
 - Guide 不内置网站品牌 Logo；未设置图标或历史品牌键使用通用 Globe，自定义 HTTPS 图片继续显示。
 - 三种卡片模式：standard、compact、minimal；深浅色及响应式布局。
 
-当前源码版本为 **Guide v1.0.0**（Current source version: 1.0.0）。源码仓库为 NSJLUCAS/Guide；尚未创建 v1.0.0 tag 或 GitHub Release，正式二进制下载将在发布后提供。自动安装源和自有更新源尚未提供。
+当前正式版本：**Guide v1.0.0**。自动安装和自动更新尚未提供。
 
-首版正式支持目标为 **Linux x86_64 GNU**。发布工作流使用 Ubuntu 22.04，以降低 glibc 构建基线；具体二进制依赖仍需实际 Linux 制品验证，不承诺 Alpine/musl 静态、ARM 或 Windows 支持。
+首版正式支持目标为 **Linux x86_64 GNU**。发布工作流使用 Ubuntu 22.04，以降低 glibc 构建基线；运行环境需要兼容的 glibc，不承诺 Alpine/musl 静态、ARM 或 Windows 支持。
+
+## 下载
+
+- [Guide v1.0.0 Release 页面](https://github.com/NSJLUCAS/Guide/releases/tag/v1.0.0)
+- [Linux x86_64 GNU 压缩包](https://github.com/NSJLUCAS/Guide/releases/download/v1.0.0/guide-linux-x86_64.tar.gz)
+- [SHA-256 校验文件](https://github.com/NSJLUCAS/Guide/releases/download/v1.0.0/guide-linux-x86_64.tar.gz.sha256)
+- [安装说明](docs/deployment/INSTALL.md)
 
 ## 源码结构
 
@@ -24,7 +31,7 @@ Guide 是一个网站与服务导航门户：用紧凑卡片查看服务、在�
 guide/               Rust Hub、管理后台、构建与兼容源码
 navigation-theme/    Guide 公开导航主题
 docs/                版本变更、许可清单和部署说明
-.github/workflows/   main CI 与未来 v* tag Release 配置
+.github/workflows/   main CI 与 v* tag Release 配置
 README.md            功能与入门
 LICENSE              原 MIT 及版权
 THIRD_PARTY_NOTICES.md 上游与第三方资源声明
@@ -91,8 +98,8 @@ Guide is based on monitor-probe/monitor and is distributed under the terms of th
 
 原版权与 MIT 条款完整保留在 [LICENSE](LICENSE)、[guide/LICENSE](guide/LICENSE) 和 [navigation-theme/LICENSE](navigation-theme/LICENSE)。详细来源、版本与保留的兼容名称见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。原作者版权未替换为 Guide 作者。
 
-## 开发、安全与发布准备
+## 开发、安全与发布
 
-开发检查见 [CONTRIBUTING.md](CONTRIBUTING.md)，漏洞请按 [SECURITY.md](SECURITY.md) 私下报告。版本变更见 [CHANGELOG](docs/CHANGELOG.md)。CI 在 main push/PR 执行两前端完整检查、Rust fmt/全量测试/release build；未来 `v*` tag workflow 在重新验证后准备 Linux x86_64 包及 SHA-256。当前没有触发发布。
+开发检查见 [CONTRIBUTING.md](CONTRIBUTING.md)，漏洞请按 [SECURITY.md](SECURITY.md) 私下报告。版本变更见 [CHANGELOG](docs/CHANGELOG.md)。CI 在 main push/PR 执行两前端完整检查、Rust fmt/全量测试/release build；`v*` tag 发布工作流重新验证版本、测试和构建，打包 Linux x86_64 制品及 SHA-256 并发布到 GitHub Releases。
 
 Guide 的上游来源、原版权与第三方授权说明见本页的来源章节、[LICENSE](LICENSE) 和 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

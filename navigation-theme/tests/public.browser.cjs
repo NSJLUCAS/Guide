@@ -7,7 +7,7 @@ async function main() {
   const base = process.env.NAVIGATION_PREVIEW
   assert.ok(base, 'NAVIGATION_PREVIEW must point at an existing local production preview')
   const origin = new URL(base).origin
-  const output = process.env.V33_PUBLIC_SCREENSHOTS || path.join(__dirname, 'artifacts-v33')
+  const output = process.env.PUBLIC_SCREENSHOTS || path.join(__dirname, 'artifacts-public')
   await fs.mkdir(output, { recursive: true })
   const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || undefined, headless: true })
   const context = await browser.newContext({ viewport: { width: 1600, height: 1100 }, colorScheme: 'light' })
@@ -72,12 +72,12 @@ async function main() {
     assert.equal(await page.title(), 'Guide')
     assert.equal(await page.getByRole('heading', { level: 1 }).innerText(), 'Guide')
     assert.equal(await first().locator('svg.lucide-globe').count(), 1, 'legacy github icon should use the generic fallback')
-    const baselinePath = process.env.V33_STANDARD_BASELINE
-    if (process.env.V33_CAPTURE_BASELINE === '1') {
-      assert.ok(baselinePath, 'V33_STANDARD_BASELINE is required for baseline capture')
+    const baselinePath = process.env.PUBLIC_STANDARD_BASELINE
+    if (process.env.PUBLIC_CAPTURE_BASELINE === '1') {
+      assert.ok(baselinePath, 'PUBLIC_STANDARD_BASELINE is required for baseline capture')
       await fs.writeFile(baselinePath, JSON.stringify({ html: await first().evaluate(node => node.outerHTML), height: (await first().boundingBox()).height }))
-      await page.screenshot({ path: path.join(output, 'standard-v32-desktop-light.png'), fullPage: true })
-      console.log('Captured existing v3.2 standard DOM and screenshot')
+      await page.screenshot({ path: path.join(output, 'standard-baseline-desktop-light.png'), fullPage: true })
+      console.log('Captured standard card DOM and screenshot baseline')
       return
     }
     await styleIs('standard')
@@ -91,7 +91,7 @@ async function main() {
       const html = await first().evaluate(node => node.outerHTML.replace(' data-card-style="standard"', ''))
       // This response timestamp changes between runs; preserve every DOM/class field.
       const timestampNeutral = value => value.replace(/title="\d{4}-\d\d-\d\dT[^"]+"/g, 'title="CHECKED_AT"')
-      assert.equal(timestampNeutral(html), timestampNeutral(baseline.html), 'standard card DOM and classes remain identical to v3.2')
+      assert.equal(timestampNeutral(html), timestampNeutral(baseline.html), 'standard card DOM and classes match the baseline')
       assert.equal(heights.standard, baseline.height)
     }
     await page.screenshot({ path: path.join(output, 'standard-desktop-light.png'), fullPage: true })
@@ -195,7 +195,7 @@ async function main() {
     assert.equal(await cards().count(), 6)
     assert.deepEqual([...new Set(apiPaths)].sort(), ['/api/public-config', '/api/services'])
     assert.deepEqual(errors, [])
-    console.log(`public v3.3 fixture passed: ${JSON.stringify({ heights, configCalls, serviceCalls, maxActive, apiPaths: [...new Set(apiPaths)], output })}`)
+    console.log(`public navigation fixture passed: ${JSON.stringify({ heights, configCalls, serviceCalls, maxActive, apiPaths: [...new Set(apiPaths)], output })}`)
   } finally { await browser.close() }
 }
 

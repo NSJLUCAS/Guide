@@ -6,7 +6,7 @@ Guide 自有仓库为 [NSJLUCAS/Guide](https://github.com/NSJLUCAS/Guide)。如�
 
 如果该入口未启用，可在 [Guide Issues](https://github.com/NSJLUCAS/Guide/issues) 提交一个不含漏洞细节和敏感信息的 issue，请维护者提供私下沟通方式；取得私下渠道后再发送复现步骤。不要在公开 issue、PR、截图或日志中提交密码、token、Cookie、session、OAuth Client Secret、SSH 私钥、数据库或真实服务器配置。
 
-私下报告请包含受影响版本、影响范围、最小复现步骤及脱敏环境信息。披露时间由报告者和维护者协商；此项目尚无承诺的响应 SLA。当前源码版本为 1.0.0；尚未创建对应 tag/Release，正式支持版本策略随实际 Release 更新。
+私下报告请包含受影响版本、影响范围、最小复现步骤及脱敏环境信息。披露时间由报告者和维护者协商；此项目尚无承诺的响应 SLA。当前支持版本为 [v1.0.0](https://github.com/NSJLUCAS/Guide/releases/tag/v1.0.0)。
 
 ## 自托管管理员
 

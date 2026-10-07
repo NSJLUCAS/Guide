@@ -1,19 +1,19 @@
 # Guide 安装、持久化与升级
 
-当前源码版本为 **Guide v1.0.0**。尚未创建 v1.0.0 tag 或 GitHub Release，下载链接将在发布后提供。源码仓库为 [NSJLUCAS/Guide](https://github.com/NSJLUCAS/Guide)，尚未提供正式二进制下载；以下先说明已有源码构建部署，再说明未来 Linux x86_64 包的使用方式。没有一键安装命令。
+当前正式版本为 **Guide v1.0.0**，已在 [GitHub Releases](https://github.com/NSJLUCAS/Guide/releases/tag/v1.0.0) 发布 Linux x86_64 GNU 二进制。源码仓库为 [NSJLUCAS/Guide](https://github.com/NSJLUCAS/Guide)。以下说明源码构建和正式包部署；没有一键安装或自动更新命令。
 
 ## 构建或解包
 
 源码需要 Linux、Rust 1.99.0、Node.js 24/npm、`sh` 及 C 编译工具（bundled SQLite 编译需要）。完整源码必须有同级 `guide/` 与 `navigation-theme/`。按项目 README 或 CONTRIBUTING 先执行两个前端的 `npm ci/lint/test/build`，再在 `guide/` 执行 `cargo fmt --all --check`、完整 `cargo test`、`cargo build --release`。输出为 `guide/target/release/guide-hub`。
 
-未来正式包为 `guide-linux-x86_64.tar.gz`，同时提供 `.sha256` 文件；文件都下载完成后，在同一目录验证和解包：
+v1.0.0 正式包为 [guide-linux-x86_64.tar.gz](https://github.com/NSJLUCAS/Guide/releases/download/v1.0.0/guide-linux-x86_64.tar.gz)，校验文件为 [guide-linux-x86_64.tar.gz.sha256](https://github.com/NSJLUCAS/Guide/releases/download/v1.0.0/guide-linux-x86_64.tar.gz.sha256)。将两个文件下载到同一目录后验证和解包；只有校验成功才继续部署：
 
 ```sh
-sha256sum --check guide-linux-x86_64.tar.gz.sha256
+sha256sum --check guide-linux-x86_64.tar.gz.sha256 &&
 tar -xzf guide-linux-x86_64.tar.gz
 ```
 
-未来 workflow 使用 Ubuntu 22.04、`x86_64-unknown-linux-gnu`。需要兼容的 Linux x86_64/glibc；不承诺旧发行版、Alpine/musl、ARM 或 Windows 支持。二进制已经内嵌管理后台和导航主题，部署默认页面不需要另带 `dist/` 或运行 Node.js。可选自定义主题才需要外部主题目录。
+正式发布工作流使用 Ubuntu 22.04、`x86_64-unknown-linux-gnu`。需要兼容的 Linux x86_64/glibc；不承诺旧发行版、Alpine/musl、ARM 或 Windows 支持。二进制已经内嵌管理后台和导航主题，部署默认页面不需要另带 `dist/` 或运行 Node.js。可选自定义主题才需要外部主题目录。
 
 ## 首次运行
 
@@ -67,6 +67,6 @@ guide-hub --db <guide.db路径> --reset-password
 
 ## Docker 注意事项
 
-Guide 当前没有已发布的官方镜像。源码中保留的 scratch Dockerfile 需要另行构建的 **musl** 二进制，未来此 GNU release 包不能直接塞入 scratch 镜像。使用前须自行验证所构建的镜像。
+Guide 当前没有已发布的官方镜像。源码中保留的 scratch Dockerfile 需要另行构建的 **musl** 二进制，此 GNU release 包不能直接塞入 scratch 镜像。使用前须自行验证所构建的镜像。
 
 如自行部署兼容镜像，必须把实际数据库目录挂载到持久 volume/bind mount，设置容器服务用户的写权限；镜像约定数据库是 `/data/guide.db`，二进制是 `/guide-hub`。备份/升级同样需要保护该持久目录。首次随机密码可能在 `docker logs <容器名>` 中。容器恢复命令为 `docker exec <容器名> /guide-hub --db /data/guide.db --reset-password`；需要容器执行权限，reset 后旧 session 全部失效且 OAuth 配置保留。

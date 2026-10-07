@@ -2,7 +2,7 @@
 
 当前 Guide 源码：[NSJLUCAS/Guide](https://github.com/NSJLUCAS/Guide)。
 
-Guide 的网站导航主题，使用 React、Vite、Tailwind CSS 和 shadcn/ui。当前源码版本为 `1.0.0`，保留 v3.3 的网站分类、搜索、状态卡片及 standard、compact、minimal 三种卡片样式。
+Guide 的网站导航主题，使用 React、Vite、Tailwind CSS 和 shadcn/ui。当前版本为 `1.0.0`，支持网站分类、搜索、状态卡片及 standard、compact、minimal 三种卡片样式。
 
 ## 本地开发与构建
 
@@ -22,7 +22,7 @@ npm test
 npm run build
 ```
 
-构建结果在 `dist/`。单元测试覆盖数字格式化、API 边界、网站数据转换、安全链接和卡片样式。当前生产页面浏览器测试位于 `tests/public-v33.browser.cjs`，使用拦截的本地 API 与图片测试数据；运行时设置 `NAVIGATION_PREVIEW` 为本地生产预览地址。可用 `V33_PUBLIC_SCREENSHOTS` 指定新的截图输出目录。
+构建结果在 `dist/`。单元测试覆盖数字格式化、API 边界、网站数据转换、安全链接和卡片样式。当前生产页面浏览器测试位于 `tests/public.browser.cjs`，使用拦截的本地 API 与图片测试数据；运行时设置 `NAVIGATION_PREVIEW` 为本地生产预览地址，然后执行 `node tests/public.browser.cjs`。可用 `PUBLIC_SCREENSHOTS` 指定新的截图输出目录；可选的 standard 卡片基线比较使用 `PUBLIC_STANDARD_BASELINE`，设置 `PUBLIC_CAPTURE_BASELINE=1` 可采集基线。
 
 ## 内置主题与自定义主题
 
