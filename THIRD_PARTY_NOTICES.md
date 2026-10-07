@@ -14,7 +14,7 @@ The original MIT copyright is **Copyright (c) 2026 stqfdyr**. The complete licen
 
 `guide/web-theme.pin` retains the original upstream tag and SHA as provenance. Current builds embed the sibling local Guide navigation theme; the pin is not a fabricated signature for this modified theme.
 
-`guide/compat/upstream/install-hub.sh` and upstream schema fixtures preserve original names. The archived installer is a historical reference and must not be run against Guide. The current product installer remains disabled.
+`guide/compat/upstream/install-hub.sh` and upstream schema fixtures preserve original names. The archived installer is a historical reference and must not be run against Guide. The old Hub installer remains disabled. The new root `install-guide.sh` is Guide's independent installer/updater under validation; its only Hub release source is NSJLUCAS/Guide. `guide/install.sh` remains the separate Monitor Agent compatibility installer.
 
 The old session/OAuth Cookie names, legacy database filename detection, legacy environment variable aliases, original Agent binary/environment/service names and retired upstream updater references are documented compatibility boundaries. They do not brand Guide's pages or provide an enabled upstream update source. Deployment compatibility is documented in `docs/deployment/INSTALL.md`.
 

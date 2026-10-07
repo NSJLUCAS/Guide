@@ -16,6 +16,29 @@ Guide 是一个网站与服务导航门户：用紧凑卡片查看服务、在�
 
 当前正式版本：**Guide v1.0.0**。自动安装和自动更新尚未提供。
 
+## 官方安装与升级器（下一正式版本）
+
+源码中的 `install-guide.sh` 正在验证，**已发布的 v1.0.0 没有此资产**。以下命令需等未来正式 Release 包含安装器与 `sha256sums.txt` 后使用；当前请按下方 v1.0.0 手动部署说明安装。真实 Linux/systemd/回滚验收尚待完成。
+
+首次安装：
+
+```sh
+curl -fsSL https://github.com/NSJLUCAS/Guide/releases/latest/download/install-guide.sh -o install-guide.sh
+chmod +x install-guide.sh
+sudo ./install-guide.sh
+```
+
+安装后入口为 `/usr/local/sbin/guide-update`：
+
+```sh
+sudo guide-update          # 有新正式版本时升级
+sudo guide-update --check  # 只读：当前版本、latest 版本和是否需要升级
+```
+
+安装器只支持 **Linux x86_64 GNU + systemd**，需要 Python 3.8+、curl、systemd 工具、runuser/useradd；不支持 ARM、Windows、Docker 内升级、Alpine/musl 或 OpenRC。默认监听 `127.0.0.1:28080`，请配置自己的 HTTPS 反向代理。
+
+升级器先从现有 `guide.service` 确定实际数据库与监听地址，下载并完成 SHA-256、归档白名单和候选版本校验后才停服。停止服务后自动备份 DB 及仍存在的 WAL/SHM、旧二进制；失败时整体恢复旧二进制与升级前数据库。已有配置保留，现有 unit 不覆盖。详细范围、备份位置、路径限制和人工恢复见[安装说明](docs/deployment/INSTALL.md#官方安装与升级器下一正式版本)。
+
 首版正式支持目标为 **Linux x86_64 GNU**。发布工作流使用 Ubuntu 22.04，以降低 glibc 构建基线；运行环境需要兼容的 glibc，不承诺 Alpine/musl 静态、ARM 或 Windows 支持。
 
 ## 下载

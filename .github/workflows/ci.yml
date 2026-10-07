@@ -29,6 +29,15 @@ jobs:
           cache-dependency-path: |
             guide/web-admin/package-lock.json
             navigation-theme/package-lock.json
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Installer and Release verifier regression tests
+        working-directory: .
+        run: |
+          sh -n install-guide.sh
+          python3 -m unittest discover -s tests/updater -v
+          python3 -m unittest discover -s tests/release -v
       - uses: dtolnay/rust-toolchain@1.99.0
         with:
           components: rustfmt

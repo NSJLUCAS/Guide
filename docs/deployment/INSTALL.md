@@ -2,6 +2,44 @@
 
 当前正式版本为 **Guide v1.0.0**，已在 [GitHub Releases](https://github.com/NSJLUCAS/Guide/releases/tag/v1.0.0) 发布 Linux x86_64 GNU 二进制。源码仓库为 [NSJLUCAS/Guide](https://github.com/NSJLUCAS/Guide)。以下说明源码构建和正式包部署；没有一键安装或自动更新命令。
 
+## 官方安装与升级器（下一正式版本）
+
+`install-guide.sh` 尚未随正式 Release 发布，已发布 v1.0.0 的 tag/资产保持原样。以下命令在未来正式 Release 包含安装器、归档 SHA 与 `sha256sums.txt` 后才可用。目前验证包括 mock/fixture 自动测试；真实 Linux/systemd/SQLite/回滚及重启恢复仍待验收。
+
+```sh
+curl -fsSL https://github.com/NSJLUCAS/Guide/releases/latest/download/install-guide.sh -o install-guide.sh
+chmod +x install-guide.sh
+sudo ./install-guide.sh
+```
+
+标准首次安装：`/opt/guide/guide-hub`、`/var/lib/guide/guide.db`、`/etc/systemd/system/guide.service`、`/usr/local/sbin/guide-update`。创建专用 guide 系统用户，调用已有 `--reset-password` 在正确 ownership 的空 DB 中初始化随机应急密码。完成后在终端显示一次；不写入安装器/unit，不存在默认万能密码。密码仍可能留在终端记录中，首次登录立即修改。
+
+```sh
+sudo guide-update
+sudo guide-update --check
+guide-update --help
+```
+
+`--check` 只显示当前版本、latest 正式版本与更新状态；不下载二进制、不 self-update、不写锁或修改服务/DB/安装文件。当前等于 latest 时退出 0；当前更高时保留当前版本并提示禁止自动降级。默认运行会验证并更新保存的 updater，校验失败就退出。更新源始终是 NSJLUCAS/Guide。
+
+要求 root、Linux x86_64 glibc、可运行的 systemd、Python 3.8+、curl、systemd-detect-virt、runuser、useradd、id/getconf/uname/sh；脚本不会自动安装依赖。ARM、Windows、Docker/其他容器、Alpine/musl、OpenRC 暂不支持。下载不可达或 GitHub latest 缺少资产时，现有实例继续运行。
+
+首次安装发现已有 binary、unit、updater、DB 或孤立的 WAL/SHM 时拒绝初始化；先由管理员核对现有实例和恢复数据，不覆盖残留状态。
+
+版本通过 GitHub `latest/download/guide-linux-x86_64.tar.gz` 的首次 redirect 获得，不依赖 GitHub API；解析稳定 `vMAJOR.MINOR.PATCH` 后固定 tag 下载，避免一次操作混用两个 Release。优先 `guide-hub --version`；v1.0.0 使用 `--help` 首行兼容，无需先手动升级。
+
+下载顺序为 manifest、归档、独立 `.sha256` 和安装器。两个归档 SHA 来源必须一致，归档和安装器分别校验；只允许现有七个顶层普通文件，拒绝路径穿越、绝对路径、链接、特殊文件、重复成员、额外目录和非 binary 的可执行文件。所有解包在私有临时目录中逐文件复制，再验证 ELF x86_64 和版本；校验完成前不停止服务，不替换 binary/DB/updater。已保存 updater 需要自更新且 Hub 也有新版时，先做相同完整预检，再安全替换并 exec 新 updater。
+
+升级读取 `systemctl cat guide.service`，包含 drop-in 的有效 `ExecStart`；必须是直接执行绝对路径 guide-hub，并明确绝对 `--db` 与 `--listen`。现有 unit、listen、WorkingDirectory、User 和 hardening 不覆盖。不支持 wrapper、相对 DB、变量/specifier、复杂转义或 filesystem namespace 映射；磁盘 unit 未 daemon-reload、真实 DB 不存在或路径不确定时拒绝升级，绝不猜测创建新库。符号链接路径和硬链接 DB 也拒绝。
+
+服务停止且 MainPID 为 0 后，完整复制实际 DB 和存在的 `-wal`/`-shm` 到 `<DB目录>/backups/<UTC时间>-<随机ID>/`；旧 binary 放在 `<binary目录>/backups/<UTC时间>-<随机ID>/guide-hub`。备份 root-only，不自动清理旧备份，INFO 记录原版本和 DB 备份位置。成功保留现有配置/迁移结果，updater 不修改 Service、分类、图标库、cardStyle、OAuth 或密码/session 设置。
+
+新版在同目录临时文件完成写入后原子替换，启动后至少等待 6 秒、连续检查 active、MainPID、重启计数和版本；明确 loopback listen 时检查本机 HTTP `/api/public-config`，不以外部代理可达性为成功条件。
+
+升级失败时先停新版并确认停止，移开失败后的 DB/WAL/SHM 到备份下 `failed-state/`（保留供排查），恢复升级前快照与原权限/ownership，恢复旧 binary，再启动并验证旧版。正常升级不会删除数据库。回滚失败明确报 CRITICAL，并给出两份备份位置及服务状态。
+
+SIGINT/SIGTERM 尽力执行事务恢复；SIGKILL、断电或磁盘故障不能保证自动恢复。残留 `/run/lock/guide-update.lock` 时先确认没有 updater 进程，再由管理员处理锁。人工恢复时停止并确认 guide.service 已停止，移开当前失败状态，按 INFO 中的真实 DB 路径恢复整个快照（含原有侧文件，移开快照中没有的失败侧文件），恢复服务用户权限及旧 binary，启动验证；不要只恢复旧 binary 或把运行中的 DB 主文件单独复制。首次安装失败保留受保护的 DB 供恢复，使用 AUTH_RECOVERY 中的 CLI 重置密码，不重新初始化覆盖已有库。
+
 ## 构建或解包
 
 源码需要 Linux、Rust 1.99.0、Node.js 24/npm、`sh` 及 C 编译工具（bundled SQLite 编译需要）。完整源码必须有同级 `guide/` 与 `navigation-theme/`。按项目 README 或 CONTRIBUTING 先执行两个前端的 `npm ci/lint/test/build`，再在 `guide/` 执行 `cargo fmt --all --check`、完整 `cargo test`、`cargo build --release`。输出为 `guide/target/release/guide-hub`。

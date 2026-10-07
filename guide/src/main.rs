@@ -164,7 +164,7 @@ fn forwarded_proto(headers: &HeaderMap) -> Option<&str> {
 /// settings: redirecting either implies a fork, which rebuilds these lines
 /// anyway.
 pub const AGENT_REPO: &str = "monitor-probe/agent";
-pub const HUB_REPO: &str = "monitor-probe/monitor";
+pub const HUB_REPO: &str = "NSJLUCAS/Guide";
 
 /// This navigation fork must never offer or relay upstream Monitor updates.
 pub const UPSTREAM_UPDATES_ENABLED: bool = false;
@@ -371,11 +371,16 @@ fn parse_args() -> Result<Args> {
             "--site" => site = value(),
             "--themes" => themes = Some(PathBuf::from(value())),
             "--reset-password" => reset_password = true,
+            "--version" => {
+                println!("guide-hub {}", env!("CARGO_PKG_VERSION"));
+                std::process::exit(0);
+            }
             "-h" | "--help" => {
                 println!(
                     "guide-hub {}\n\n\
                      Usage: guide-hub [--listen [::]:28080] [--db guide.db] [--themes themes] [--site https://hub.example.com]\n       \
-                     guide-hub --db guide.db --reset-password\n\n\
+                     guide-hub --db guide.db --reset-password\n       \
+                     guide-hub --version\n\n\
                      --listen defaults to [::]:28080, one socket serving IPv6 and IPv4\n\
                      both; where the kernel has no dual-stack sockets it is 0.0.0.0:28080.\n\
                      --themes defaults to a themes/ directory beside the database.\n\
