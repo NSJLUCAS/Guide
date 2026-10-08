@@ -135,6 +135,9 @@ elif command == 'systemctl':
         print(state.get('dropin', ''))
     elif args[0] == 'show':
         prop = next(a.split('=', 1)[1] for a in args if a.startswith('--property='))
+        if prop == 'ExecStart' and args[1] != 'guide.service':
+            print(state.get('other_units', {}).get(args[1], ''))
+            sys.exit(0)
         values = {'LoadState': 'loaded' if state.get('service', True) else 'not-found',
                   'NeedDaemonReload': 'yes' if state.get('stale_unit') else 'no',
                   'PrivateTmp': state.get('private_tmp', 'no'),
@@ -144,6 +147,9 @@ elif command == 'systemctl':
                   'MainPID': '1234' if state.get('active') else '0',
                   'NRestarts': str(state.get('restarts', 0))}
         print(values[prop])
+    elif args[0] == 'list-units':
+        for unit in state.get('other_units', {}):
+            print(unit + ' loaded inactive dead fixture')
     elif args[0] == 'is-active':
         sys.exit(0 if state.get('active') else 3)
     elif args[0] == 'stop':

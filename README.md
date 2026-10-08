@@ -14,18 +14,20 @@ Guide 是一个网站与服务导航门户：用紧凑卡片查看服务、在�
 - Guide 不内置网站品牌 Logo；未设置图标或历史品牌键使用通用 Globe，自定义 HTTPS 图片继续显示。
 - 三种卡片模式：standard、compact、minimal；深浅色及响应式布局。
 
-当前正式版本：**Guide v1.0.0**。自动安装和自动更新尚未提供。
+当前已发布正式版本：**Guide v1.0.0**。本分支正在准备 **v1.1.0，尚未发布**；新增安装器与升级器需等 v1.1.0 正式 Release 发布后才能使用。
 
-## 官方安装与升级器（下一正式版本）
+## 官方安装与升级器（v1.1.0，尚未发布）
 
-源码中的 `install-guide.sh` 尚未随正式 Release 发布，**已发布的 v1.0.0 没有此资产**。以下命令需等未来正式 Release 包含安装器与 `sha256sums.txt` 后使用；当前请按下方 v1.0.0 手动部署说明安装。Debian 上的真实 systemd 安装/升级、SQLite 数据保护及失败回滚已验收；实际未来 Release 下载与发布链路仍待发版验证。
+**以下命令只在 v1.1.0 正式发布后可用。** 已发布的 v1.0.0 没有 `install-guide.sh` 或 `sha256sums.txt`，其 tag/资产保持原样。当前仍按 v1.0.0 手动部署说明安装。Debian 上真实 systemd 安装/升级、SQLite 数据保护及失败回滚已验收；未来正式 Release 的发布/下载链路仍待发版验证。
 
-首次安装：
+首次安装前确认没有旧实例，在一个空下载目录中校验安装器后执行：
 
 ```sh
-curl -fsSL https://github.com/NSJLUCAS/Guide/releases/latest/download/install-guide.sh -o install-guide.sh
-chmod +x install-guide.sh
-sudo ./install-guide.sh
+curl -fsSL https://github.com/NSJLUCAS/Guide/releases/download/v1.1.0/install-guide.sh -o install-guide.sh &&
+curl -fsSL https://github.com/NSJLUCAS/Guide/releases/download/v1.1.0/sha256sums.txt -o sha256sums.txt &&
+grep -E '^[[:xdigit:]]{64}  install-guide[.]sh$' sha256sums.txt > install-guide.sh.sha256 &&
+sha256sum --check install-guide.sh.sha256 &&
+sudo sh ./install-guide.sh
 ```
 
 安装后入口为 `/usr/local/sbin/guide-update`：
@@ -37,7 +39,11 @@ sudo guide-update --check  # 只读：当前版本、latest 版本和是否需�
 
 安装器只支持 **Linux x86_64 GNU + systemd**，需要 Python 3.8+、curl、systemd 工具、runuser/useradd；不支持 ARM、Windows、Docker 内升级、Alpine/musl 或 OpenRC。默认监听 `127.0.0.1:28080`，请配置自己的 HTTPS 反向代理。
 
-升级器先从现有 `guide.service` 确定实际数据库与监听地址，下载并完成 SHA-256、归档白名单和候选版本校验后才停服。停止服务后自动备份 DB 及仍存在的 WAL/SHM、旧二进制；失败时整体恢复旧二进制与升级前数据库。已有配置保留，现有 unit 不覆盖。详细范围、备份位置、路径限制和人工恢复见[安装说明](docs/deployment/INSTALL.md#官方安装与升级器下一正式版本)。
+升级器先从现有 `guide.service` 确定实际数据库与监听地址，下载并完成 SHA-256、归档白名单和候选版本校验后才停服。停止服务后自动备份 DB 及仍存在的 WAL/SHM、旧二进制；失败时整体恢复旧二进制与升级前数据库。已有配置保留，现有 unit 不覆盖。
+
+**从 v1.0.0 首次接入：** 已有受支持的 `guide.service` 时，下载并校验上述安装器后，先运行 `sudo sh ./install-guide.sh --check`，确认显示已有版本，再运行 `sudo sh ./install-guide.sh`；不需要预先存在 `guide-update`，不会重新初始化密码或数据库。其他服务名、手工启动、wrapper、容器或不明确的路径必须先按[旧部署接入与人工迁移](docs/deployment/INSTALL.md#从-v100-首次接入-updater)处理，不能将“未识别”视为“没有旧实例”。
+
+详细范围、备份位置、路径限制和人工恢复见[安装说明](docs/deployment/INSTALL.md)。[v1.1.0 Release Notes 草稿](docs/releases/v1.1.0.md)仅供发版审核。
 
 首版正式支持目标为 **Linux x86_64 GNU**。发布工作流使用 Ubuntu 22.04，以降低 glibc 构建基线；运行环境需要兼容的 glibc，不承诺 Alpine/musl 静态、ARM 或 Windows 支持。
 

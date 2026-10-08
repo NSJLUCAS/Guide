@@ -26,6 +26,7 @@ class UpdaterTest(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(prefix='guide-test-')
         self.root = Path(self.temp.name)
         self.addCleanup(self.temp.cleanup)
+        (self.root / 'proc').mkdir()
         self.db = self.root / 'var/lib/guide/guide.db'
         self.binary = self.root / 'opt/guide/guide-hub'
         self.unit = self.root / 'etc/systemd/system/guide.service'
@@ -131,6 +132,18 @@ class UpdaterTest(unittest.TestCase):
         self.assertEqual(self.output.count('Emergency password: fixture-random-password'), 1)
         self.assertTrue(self.state['active'])
 
+    def test_fresh_ignores_unrelated_processes_and_services(self):
+        for p in [self.db, self.binary, self.unit, self.updater]:
+            p.unlink()
+        self.state.update(service=False, active=False,
+                          other_units={'guide-docs.service': '{ path=/usr/bin/sleep ; argv[]=/usr/bin/sleep 60 ; }'})
+        pid = self.root / 'proc/123'
+        pid.mkdir()
+        (pid / 'comm').write_text('python3\n')
+        self.assertEqual(self.run_script(), 0, self.output)
+        self.assertTrue(self.state['active'])
+        self.assertTrue(self.db.is_file())
+
     def orphan_sidecar(self, suffix):
         for p in [self.db, self.binary, self.unit, self.updater]:
             p.unlink()
@@ -156,6 +169,80 @@ class UpdaterTest(unittest.TestCase):
         self.assertEqual(self.db.read_bytes(), before)
         self.assertEqual(self.unit.read_bytes(), unit)
         self.assertTrue(self.state['active'])
+
+    def legacy_adoption(self, custom=False, dropin=False):
+        self.updater.unlink()  # Published v1.0.0 has no official updater.
+        self.state['latest'] = '1.1.0'
+        self.make_release()
+        if custom:
+            directory = self.root / 'custom deployment'
+            directory.mkdir()
+            binary, db = directory / 'guide-hub', directory / 'monitor.db'
+            self.binary.replace(binary)
+            self.db.replace(db)
+            self.binary, self.db = binary, db
+            self.state['db'] = str(db)
+            command = 'ExecStart="' + binary.as_posix() + '" --db "' + db.as_posix() + '" --listen 127.0.0.1:29999\n'
+            if dropin:
+                self.state['dropin'] = '[Service]\nExecStart=\n' + command
+            else:
+                self.unit.write_text('[Service]\nUser=guide\nMemoryMax=1G\n' + command)
+        for suffix in ['-wal', '-shm']:
+            Path(str(self.db) + suffix).write_bytes(suffix.encode())
+        before = {p: p.read_bytes() for p in [self.db, Path(str(self.db) + '-wal'),
+                                            Path(str(self.db) + '-shm'), self.unit]}
+        unit_dropin = self.state.get('dropin')
+        self.assertEqual(self.run_script(), 0, self.output)
+        for p, data in before.items():
+            self.assertEqual(p.read_bytes(), data)
+        self.assertEqual(self.state.get('dropin'), unit_dropin)
+        self.assertEqual(self.binary.read_bytes(), self.hub('1.1.0'))
+        self.assertEqual(self.updater.read_bytes(), SCRIPT.read_bytes())
+        self.assertFalse(any(c[0] in ['useradd', 'runuser'] for c in self.commands()))
+        if custom:
+            self.assertFalse((self.root / 'opt/guide/guide-hub').exists())
+            self.assertFalse((self.root / 'var/lib/guide/guide.db').exists())
+
+    def test_v100_without_updater_adopted(self):
+        self.legacy_adoption()
+
+    def test_v100_custom_paths_without_updater_adopted(self):
+        self.legacy_adoption(custom=True)
+
+    def test_v100_dropin_without_updater_adopted(self):
+        self.legacy_adoption(custom=True, dropin=True)
+
+    def unidentified_deployment(self, process=False):
+        directory = self.root / 'legacy'
+        directory.mkdir()
+        db, binary = directory / 'guide.db', directory / 'guide-hub'
+        self.db.replace(db)
+        self.binary.replace(binary)
+        self.unit.unlink()
+        self.updater.unlink()
+        self.state.update(service=False, latest='1.1.0')
+        self.make_release()
+        if process:
+            pid = self.root / 'proc/123'
+            pid.mkdir()
+            (pid / 'comm').write_text('guide-hub\n')
+        else:
+            self.state['other_units'] = {'legacy-guide.service': '{ path=/custom/guide-hub ; argv[]=/custom/guide-hub --db /custom/guide.db ; }'}
+        before = {p: p.read_bytes() for p in [db, binary]}
+        self.assertNotEqual(self.run_script(), 0, self.output)
+        self.assertIn('manual migration', self.output)
+        for p, data in before.items():
+            self.assertEqual(p.read_bytes(), data)
+        for p in [self.db, self.binary, self.unit, self.updater]:
+            self.assertFalse(p.exists())
+        self.assertTrue(self.state['active'])
+        self.assertFalse(any(c[0] == 'runuser' or c[:2] == ['systemctl', 'stop'] for c in self.commands()))
+
+    def test_running_unmanaged_guide_refused(self):
+        self.unidentified_deployment(process=True)
+
+    def test_differently_named_loaded_guide_refused(self):
+        self.unidentified_deployment()
 
     def test_already_latest(self):
         self.state['latest'] = '1.0.0'

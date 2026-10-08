@@ -105,11 +105,33 @@ def safe_path(path, existing=False):
         require(path.is_file() and path.stat().st_nlink == 1, 'Missing or non-regular file: ' + str(path))
 
 
+def refuse_unrecognized_deployment():
+    # Do not guess the data path of a deployment outside guide.service. A
+    # recognizable process or loaded unit makes first-install ambiguous.
+    for process in Path('/proc').iterdir():
+        if not process.name.isdigit():
+            continue
+        try:
+            name = (process / 'comm').read_text(encoding='utf-8', errors='replace').strip()
+        except FileNotFoundError:
+            continue  # Process exited during this read-only inspection.
+        require(name != 'guide-hub', 'Existing Guide process outside guide.service; manual migration required')
+    units = run(['systemctl', 'list-units', '--all', '--type=service', '--no-legend', '--plain', '--no-pager'])
+    for line in units.stdout.splitlines():
+        fields = line.split()
+        if not fields or fields[0] == 'guide.service' or not fields[0].endswith('.service'):
+            continue
+        command = run(['systemctl', 'show', fields[0], '--property=ExecStart', '--value']).stdout
+        require(re.search(r'[/=\s]guide-hub(?:[\s;}]|$)', command) is None,
+                'Guide uses a different loaded service; manual migration required')
+
+
 def installed():
     loaded = prop('LoadState')
     if loaded == 'not-found':
         require(not any(p.exists() or p.is_symlink() for p in fresh_paths()),
                 'guide.service is missing but installation/data remains; refusing to guess')
+        refuse_unrecognized_deployment()
         return None
     require(loaded == 'loaded', 'guide.service cannot be loaded')
     require(prop('NeedDaemonReload') == 'no', 'Unit changed on disk; run daemon-reload and review the active configuration first')
