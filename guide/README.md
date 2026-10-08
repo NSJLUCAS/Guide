@@ -6,7 +6,7 @@ Guide Hub 是网站和服务导航门户的 Rust 后端，内嵌现有管理后�
 
 完整功能、构建步骤和兼容注意事项见[项目 README](../README.md)。从完整源码结构构建，先生成 `web-admin/dist` 与 `../navigation-theme/dist`，再在此目录运行 `cargo build --release`。二进制为 `guide-hub`；新数据库默认 `guide.db`，已有数据库必须按[安装与升级说明](../docs/deployment/INSTALL.md)选择。
 
-Guide v1.0.0 已正式发布，Linux x86_64 GNU 二进制从 [GitHub Releases](https://github.com/NSJLUCAS/Guide/releases/tag/v1.0.0) 获取。本分支源码准备 v1.1.0，尚未发布；新的官方安装器与 updater 只有 v1.1.0 发布后可正式使用，旧实例接入步骤见[安装说明](../docs/deployment/INSTALL.md)。兼容占位脚本 `install-hub.sh` 仍不执行安装。
+Linux x86_64 GNU 二进制与官方安装器从 [GitHub Releases 最新稳定版本](https://github.com/NSJLUCAS/Guide/releases/latest) 获取；正式版本和更新说明统一以 Releases 为准，旧实例接入步骤见[安装说明](../docs/deployment/INSTALL.md)。兼容占位脚本 `install-hub.sh` 仍不执行安装。
 
 ## 应急密码与恢复
 

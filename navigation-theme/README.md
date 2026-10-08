@@ -2,7 +2,7 @@
 
 当前 Guide 源码：[NSJLUCAS/Guide](https://github.com/NSJLUCAS/Guide)。
 
-Guide 的网站导航主题，使用 React、Vite、Tailwind CSS 和 shadcn/ui。本分支源码版本为 `1.1.0`（尚未发布），当前已发布正式版本仍为 `1.0.0`；支持网站分类、搜索、状态卡片及 standard、compact、minimal 三种卡片样式。
+Guide 的网站导航主题，使用 React、Vite、Tailwind CSS 和 shadcn/ui。正式版本与更新说明见 [GitHub Releases](https://github.com/NSJLUCAS/Guide/releases/latest)；支持网站分类、搜索、状态卡片及 standard、compact、minimal 三种卡片样式。
 
 ## 本地开发与构建
 

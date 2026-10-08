@@ -1,18 +1,20 @@
 # Guide 安装、持久化与升级
 
-当前已发布正式版本为 **Guide v1.0.0**，Linux x86_64 GNU 二进制见 [GitHub Releases](https://github.com/NSJLUCAS/Guide/releases/tag/v1.0.0)。本分支准备 **v1.1.0，尚未发布**；源码仓库为 [NSJLUCAS/Guide](https://github.com/NSJLUCAS/Guide)。v1.0.0 使用下文手动部署，安装器命令需等 v1.1.0 发布后才可用。
+安装默认使用 [GitHub Releases 最新稳定版本](https://github.com/NSJLUCAS/Guide/releases/latest)。正式版本、更新说明和各版本附件以 [Releases](https://github.com/NSJLUCAS/Guide/releases) 为准；源码仓库为 [NSJLUCAS/Guide](https://github.com/NSJLUCAS/Guide)。升级前阅读目标 Release Notes 的安装、安全和兼容要求。
 
-## 官方安装与升级器（v1.1.0，尚未发布）
+## 官方安装与升级器
 
-**以下命令仅在 v1.1.0 正式发布后可用。** v1.0.0 的 tag/资产保持原样，不含安装器或 `sha256sums.txt`。mock/fixture 自动测试与 Debian 上真实 systemd 安装/升级、SQLite 数据保护、失败回滚及面板预览已验收；未来正式 Release 的发布/下载链路和重启恢复仍未验证。在空下载目录中获取并校验安装器，校验失败即停止：
+首次安装前确认机器上没有旧 Guide 实例。在空下载目录中从最新稳定 Release 获取并校验安装器，校验失败即停止：
 
 ```sh
-curl -fsSL https://github.com/NSJLUCAS/Guide/releases/download/v1.1.0/install-guide.sh -o install-guide.sh &&
-curl -fsSL https://github.com/NSJLUCAS/Guide/releases/download/v1.1.0/sha256sums.txt -o sha256sums.txt &&
+curl -fsSL https://github.com/NSJLUCAS/Guide/releases/latest/download/install-guide.sh -o install-guide.sh &&
+curl -fsSL https://github.com/NSJLUCAS/Guide/releases/latest/download/sha256sums.txt -o sha256sums.txt &&
 grep -E '^[[:xdigit:]]{64}  install-guide[.]sh$' sha256sums.txt > install-guide.sh.sha256 &&
 sha256sum --check install-guide.sh.sha256 &&
 sudo sh ./install-guide.sh
 ```
+
+上面的固定 latest 入口无需随版本更新。两次下载之间 latest 可能切换；SHA 校验失败时不执行脚本，在新的空目录重新下载整组文件，不能跳过校验或沿用旧清单。安装器内部另行解析 latest 的稳定 tag，并固定该 tag 下载 manifest、归档、独立 SHA 和安装器，保持现有版本锁定流程。
 
 标准首次安装：`/opt/guide/guide-hub`、`/var/lib/guide/guide.db`、`/etc/systemd/system/guide.service`、`/usr/local/sbin/guide-update`。创建专用 guide 系统用户，调用已有 `--reset-password` 在正确 ownership 的空 DB 中初始化随机应急密码。完成后在终端显示一次；不写入安装器/unit，不存在默认万能密码。密码仍可能留在终端记录中，首次登录立即修改。
 
@@ -53,24 +55,24 @@ v1.0.0 没有官方安装器，但**受支持的已有 `guide.service` 不需要
 - 原数据库真实存在，路径、普通文件和 ownership 可核实；无符号链接、硬链接或上述 namespace/备份名称冲突。
 - 自定义二进制和数据库路径、监听端口、User、WorkingDirectory、其他 systemd 配置可继续保留；不要求迁移到默认目录。
 
-在 v1.1.0 发布后，已有实例首次接入时在空下载目录执行以下下载、校验和只读检查，**不执行上一节的首次安装代码块**：
+已有实例首次接入时在空下载目录执行以下下载、校验和只读检查，**不执行上一节的首次安装代码块**：
 
 ```sh
-curl -fsSL https://github.com/NSJLUCAS/Guide/releases/download/v1.1.0/install-guide.sh -o install-guide.sh &&
-curl -fsSL https://github.com/NSJLUCAS/Guide/releases/download/v1.1.0/sha256sums.txt -o sha256sums.txt &&
+curl -fsSL https://github.com/NSJLUCAS/Guide/releases/latest/download/install-guide.sh -o install-guide.sh &&
+curl -fsSL https://github.com/NSJLUCAS/Guide/releases/latest/download/sha256sums.txt -o sha256sums.txt &&
 grep -E '^[[:xdigit:]]{64}  install-guide[.]sh$' sha256sums.txt > install-guide.sh.sha256 &&
 sha256sum --check install-guide.sh.sha256 &&
 sudo sh ./install-guide.sh --check
 ```
 
-应显示 `Current: 1.0.0`，且 latest 为新的正式版。核对已经识别原实例后，再单独执行：
+应显示原实例的实际版本（v1.0.0 实例为 `Current: 1.0.0`），latest 为最新稳定版本。核对已经识别原实例后，再单独执行：
 
 ```sh
 sudo sh ./install-guide.sh
 sudo guide-update --check
 ```
 
-若输出 `not installed`、报配置/路径错误或没有识别原实例，立即停止，不继续默认安装。升级不会调用密码初始化/重置，也不会新建空库；OAuth、Service、分类、图标库、密码 hash 和会话保留。schema 仍为 13。仍建议先保存独立一致性备份与旧 binary；升级器在停服后再保存自己的 DB/WAL/SHM 快照。
+若输出 `not installed`、报配置/路径错误或没有识别原实例，立即停止，不继续默认安装。升级不会调用密码初始化/重置，也不会新建空库；OAuth、Service、分类、图标库、密码 hash 和会话保留。目标版本的 schema 和兼容要求以其 Release Notes 为准。仍建议先保存独立一致性备份与旧 binary；升级器在停服后再保存自己的 DB/WAL/SHM 快照。
 
 ### 无法自动接管的旧部署
 
@@ -81,8 +83,8 @@ sudo guide-update --check
 1. 记录旧服务/启动命令、真实二进制和 DB 路径、listen、User/Group、WorkingDirectory、环境变量、主题路径、主 unit/drop-in 和代理配置。不要仅凭默认文件名判断数据库。
 2. 在维护窗口停止旧进程/服务并确认退出，备份原 binary、完整 DB 与当时存在的 WAL/SHM、权限/ownership 和配置；备份按敏感文件保护。不对旧 DB 调用 `--reset-password` 或创建新空库。
 3. 若希望接入 updater，人工创建/迁移为受支持的 `guide.service`：保留实际路径和用户配置，把 `ExecStart` 明确为直接执行绝对 `guide-hub --db <原DB绝对路径> --listen <原监听地址>`，保留适用的 site/themes 参数。逐项检查原服务名相关依赖和 drop-in；不覆盖已存在的 `guide.service`。
-4. 停用旧启动入口，避免两个服务访问同一 DB；reload 后先用旧 v1.0.0 binary 和同一个 DB 启动 `guide.service`，核对原账户、OAuth、Service、图标库和面板。只有确认原实例正常且 updater 的只读检查识别它后，才执行上面的升级步骤。
-5. 若部署方式仍不支持 updater，保留原服务管理方式：v1.1.0 发布后下载其四项资产，校验归档 `.sha256` 与 `sha256sums.txt`，在独立暂存目录检查/解开七成员归档；停服和完整备份后，仅替换原 binary，再以原命令、原 DB、原配置启动并验证。失败时停服后恢复原 binary 和完整 DB/WAL/SHM 快照。不要执行 fresh installer。
+4. 停用旧启动入口，避免两个服务访问同一 DB；reload 后先用原 binary 和同一个 DB 启动 `guide.service`，核对原账户、OAuth、Service、图标库和面板。只有确认原实例正常且 updater 的只读检查识别它后，才执行上面的升级步骤。
+5. 若部署方式仍不支持 updater，保留原服务管理方式：下载目标稳定 Release 的四项资产，校验归档 `.sha256` 与 `sha256sums.txt`，在独立暂存目录检查/解开七成员归档；停服和完整备份后，仅替换原 binary，再以原命令、原 DB、原配置启动并验证。失败时停服后恢复原 binary 和完整 DB/WAL/SHM 快照。不要执行 fresh installer。
 
 没有通用的自动迁移命令；无法确认真实 DB 或 namespace 对应宿主机路径时应先解决路径问题，不能猜测。即使安装器没有发现进程或已加载服务，也不能据此断言机器上没有未运行的自定义旧部署。
 
@@ -90,10 +92,17 @@ sudo guide-update --check
 
 源码需要 Linux、Rust 1.99.0、Node.js 24/npm、`sh` 及 C 编译工具（bundled SQLite 编译需要）。完整源码必须有同级 `guide/` 与 `navigation-theme/`。按项目 README 或 CONTRIBUTING 先执行两个前端的 `npm ci/lint/test/build`，再在 `guide/` 执行 `cargo fmt --all --check`、完整 `cargo test`、`cargo build --release`。输出为 `guide/target/release/guide-hub`。
 
-v1.0.0 正式包为 [guide-linux-x86_64.tar.gz](https://github.com/NSJLUCAS/Guide/releases/download/v1.0.0/guide-linux-x86_64.tar.gz)，校验文件为 [guide-linux-x86_64.tar.gz.sha256](https://github.com/NSJLUCAS/Guide/releases/download/v1.0.0/guide-linux-x86_64.tar.gz.sha256)。将两个文件下载到同一目录后验证和解包；只有校验成功才继续部署：
+最新稳定包为 [guide-linux-x86_64.tar.gz](https://github.com/NSJLUCAS/Guide/releases/latest/download/guide-linux-x86_64.tar.gz)，独立校验文件为 [guide-linux-x86_64.tar.gz.sha256](https://github.com/NSJLUCAS/Guide/releases/latest/download/guide-linux-x86_64.tar.gz.sha256)，汇总清单为 [sha256sums.txt](https://github.com/NSJLUCAS/Guide/releases/latest/download/sha256sums.txt)。在空暂存目录下载三项文件；两个归档 SHA 来源都验证成功才解包。latest 切换造成校验失败时停止并重新下载整组文件。需要固定版本部署时，从对应 Release 页面下载同一 tag 的三项文件，不与 latest 混用。
+
+历史例外：[v1.0.0 Release](https://github.com/NSJLUCAS/Guide/releases/tag/v1.0.0) 只有归档和独立 `.sha256`，没有官方安装器或 `sha256sums.txt`。固定部署该历史版本时下载其两个附件，独立 SHA 校验成功后手动部署；不运行下方 latest 下载代码块，不伪造汇总清单或跳过 SHA。固定下载某版安装器只固定脚本资产，执行它仍会选择运行时的 latest 稳定 Hub，并不提供固定历史 Hub 的安装选项。
 
 ```sh
+curl -fsSL https://github.com/NSJLUCAS/Guide/releases/latest/download/guide-linux-x86_64.tar.gz -o guide-linux-x86_64.tar.gz &&
+curl -fsSL https://github.com/NSJLUCAS/Guide/releases/latest/download/guide-linux-x86_64.tar.gz.sha256 -o guide-linux-x86_64.tar.gz.sha256 &&
+curl -fsSL https://github.com/NSJLUCAS/Guide/releases/latest/download/sha256sums.txt -o sha256sums.txt &&
+grep -E '^[[:xdigit:]]{64}  guide-linux-x86_64[.]tar[.]gz$' sha256sums.txt > archive.sha256 &&
 sha256sum --check guide-linux-x86_64.tar.gz.sha256 &&
+sha256sum --check archive.sha256 &&
 tar -xzf guide-linux-x86_64.tar.gz
 ```
 

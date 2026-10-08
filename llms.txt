@@ -1,0 +1,27 @@
+# Guide
+
+> Guide 是使用 Rust、SQLite 和 React/TypeScript 的自托管网站与服务导航门户。部署默认使用最新稳定 Release。
+
+## 正式版本与下载
+
+- [GitHub Releases](https://github.com/NSJLUCAS/Guide/releases): 正式版本与 Release Notes 的统一来源。
+- [最新稳定版本](https://github.com/NSJLUCAS/Guide/releases/latest): 默认下载和部署入口。
+- [官方安装器](https://github.com/NSJLUCAS/Guide/releases/latest/download/install-guide.sh): 执行前按 INSTALL 校验 SHA-256。
+- [SHA 汇总清单](https://github.com/NSJLUCAS/Guide/releases/latest/download/sha256sums.txt): 包含归档和安装器摘要。
+- [Linux x86_64 GNU 归档](https://github.com/NSJLUCAS/Guide/releases/latest/download/guide-linux-x86_64.tar.gz)
+- [独立归档 SHA](https://github.com/NSJLUCAS/Guide/releases/latest/download/guide-linux-x86_64.tar.gz.sha256)
+
+## 部署文档
+
+- [项目 README](README.md): 功能、构建与入口。
+- [安装与升级](docs/deployment/INSTALL.md): 系统限制、SHA 校验、旧实例接入、备份与恢复。
+- [AI 部署指南](docs/deployment/AI_DEPLOYMENT.md): AI 助手执行前必读的流程与验收要求。
+- [安全政策](SECURITY.md): 最新稳定版维护规则与私下漏洞报告。
+- [应急密码恢复](docs/deployment/AUTH_RECOVERY.md): 原实例账号恢复与日志保护。
+- [历史更新记录](docs/CHANGELOG.md): 保留既有摘要，未来更新日志只维护 Releases。
+
+## 执行约束
+
+先只读检查并展示编号计划；确认系统兼容及有无旧实例。已有实例先 --check，未识别不等于没有旧数据。校验失败停止，latest 切换时重新下载整组文件；后续资产由安装器固定到稳定 tag。不得跳过 SHA、版本锁定或禁止降级检查，不猜 DB 路径、不重置旧实例密码。高风险系统修改先取得用户确认，修改后根据实际证据验收。
+
+本文不记录当前产品版本号。只有下载资产名称、安装、安全或兼容规则变化时更新；普通发版无需修改。

@@ -14,21 +14,23 @@ Guide 是一个网站与服务导航门户：用紧凑卡片查看服务、在�
 - Guide 不内置网站品牌 Logo；未设置图标或历史品牌键使用通用 Globe，自定义 HTTPS 图片继续显示。
 - 三种卡片模式：standard、compact、minimal；深浅色及响应式布局。
 
-当前已发布正式版本：**Guide v1.0.0**。本分支正在准备 **v1.1.0，尚未发布**；新增安装器与升级器需等 v1.1.0 正式 Release 发布后才能使用。
+正式版本、Release Notes 和各版本附件统一见 [GitHub Releases](https://github.com/NSJLUCAS/Guide/releases)；安装与下载默认使用[最新稳定版本](https://github.com/NSJLUCAS/Guide/releases/latest)。
 
-## 官方安装与升级器（v1.1.0，尚未发布）
+## 官方安装与升级器
 
-**以下命令只在 v1.1.0 正式发布后可用。** 已发布的 v1.0.0 没有 `install-guide.sh` 或 `sha256sums.txt`，其 tag/资产保持原样。当前仍按 v1.0.0 手动部署说明安装。Debian 上真实 systemd 安装/升级、SQLite 数据保护及失败回滚已验收；未来正式 Release 的发布/下载链路仍待发版验证。
+官方安装器从最新稳定 Release 获取，校验通过后才执行。支持范围、旧实例接入和恢复规则见[安装说明](docs/deployment/INSTALL.md)；各版本特有的兼容变化以对应 Release Notes 为准。
 
 首次安装前确认没有旧实例，在一个空下载目录中校验安装器后执行：
 
 ```sh
-curl -fsSL https://github.com/NSJLUCAS/Guide/releases/download/v1.1.0/install-guide.sh -o install-guide.sh &&
-curl -fsSL https://github.com/NSJLUCAS/Guide/releases/download/v1.1.0/sha256sums.txt -o sha256sums.txt &&
+curl -fsSL https://github.com/NSJLUCAS/Guide/releases/latest/download/install-guide.sh -o install-guide.sh &&
+curl -fsSL https://github.com/NSJLUCAS/Guide/releases/latest/download/sha256sums.txt -o sha256sums.txt &&
 grep -E '^[[:xdigit:]]{64}  install-guide[.]sh$' sha256sums.txt > install-guide.sh.sha256 &&
 sha256sum --check install-guide.sh.sha256 &&
 sudo sh ./install-guide.sh
 ```
+
+若下载期间 latest 切换，SHA 校验失败即停止；在新的空目录重新下载安装器和校验清单，不跳过校验或混用旧文件。安装器运行时会解析最新稳定 tag，并固定该 tag 下载和验证后续资产。
 
 安装后入口为 `/usr/local/sbin/guide-update`：
 
@@ -41,18 +43,21 @@ sudo guide-update --check  # 只读：当前版本、latest 版本和是否需�
 
 升级器先从现有 `guide.service` 确定实际数据库与监听地址，下载并完成 SHA-256、归档白名单和候选版本校验后才停服。停止服务后自动备份 DB 及仍存在的 WAL/SHM、旧二进制；失败时整体恢复旧二进制与升级前数据库。已有配置保留，现有 unit 不覆盖。
 
-**从 v1.0.0 首次接入：** 已有受支持的 `guide.service` 时，下载并校验上述安装器后，先运行 `sudo sh ./install-guide.sh --check`，确认显示已有版本，再运行 `sudo sh ./install-guide.sh`；不需要预先存在 `guide-update`，不会重新初始化密码或数据库。其他服务名、手工启动、wrapper、容器或不明确的路径必须先按[旧部署接入与人工迁移](docs/deployment/INSTALL.md#从-v100-首次接入-updater)处理，不能将“未识别”视为“没有旧实例”。
+**已有实例首次接入（包括 v1.0.0）：** 已有受支持的 `guide.service` 时，下载并校验上述安装器后，先运行 `sudo sh ./install-guide.sh --check`，确认显示已有版本，再运行 `sudo sh ./install-guide.sh`；不需要预先存在 `guide-update`，不会重新初始化密码或数据库。其他服务名、手工启动、wrapper、容器或不明确的路径必须先按[旧部署接入与人工迁移](docs/deployment/INSTALL.md#从-v100-首次接入-updater)处理，不能将“未识别”视为“没有旧实例”。
 
-详细范围、备份位置、路径限制和人工恢复见[安装说明](docs/deployment/INSTALL.md)。[v1.1.0 Release Notes 草稿](docs/releases/v1.1.0.md)仅供发版审核。
+详细范围、备份位置、路径限制和人工恢复见[安装说明](docs/deployment/INSTALL.md)。AI 助手部署时请遵循 [AI 部署指南](docs/deployment/AI_DEPLOYMENT.md)，文档入口见 [llms.txt](llms.txt)。
 
-首版正式支持目标为 **Linux x86_64 GNU**。发布工作流使用 Ubuntu 22.04，以降低 glibc 构建基线；运行环境需要兼容的 glibc，不承诺 Alpine/musl 静态、ARM 或 Windows 支持。
+正式二进制支持目标为 **Linux x86_64 GNU**。发布工作流使用 Ubuntu 22.04，以降低 glibc 构建基线；运行环境需要兼容的 glibc，不承诺 Alpine/musl 静态、ARM 或 Windows 支持。
 
 ## 下载
 
-- [Guide v1.0.0 Release 页面](https://github.com/NSJLUCAS/Guide/releases/tag/v1.0.0)
-- [Linux x86_64 GNU 压缩包](https://github.com/NSJLUCAS/Guide/releases/download/v1.0.0/guide-linux-x86_64.tar.gz)
-- [SHA-256 校验文件](https://github.com/NSJLUCAS/Guide/releases/download/v1.0.0/guide-linux-x86_64.tar.gz.sha256)
+- [最新稳定 Release 与更新说明](https://github.com/NSJLUCAS/Guide/releases/latest)
+- [Linux x86_64 GNU 压缩包](https://github.com/NSJLUCAS/Guide/releases/latest/download/guide-linux-x86_64.tar.gz)
+- [SHA-256 校验文件](https://github.com/NSJLUCAS/Guide/releases/latest/download/guide-linux-x86_64.tar.gz.sha256)
+- [SHA-256 汇总清单](https://github.com/NSJLUCAS/Guide/releases/latest/download/sha256sums.txt)
 - [安装说明](docs/deployment/INSTALL.md)
+
+手动部署时也须校验同一 Release 的归档与 SHA 文件，详见安装说明。
 
 ## 源码结构
 
@@ -99,7 +104,7 @@ CI 执行两个前端的 lint/test/build、Rust 格式检查、完整 `cargo tes
 
 不要在升级时误指向新空库。新工作目录默认 `guide.db`；只有旧 `monitor.db` 时仍使用原文件；两者同时存在则必须明确 `--db`。不自动改名、复制数据库或移动 WAL。升级及兼容注意事项见[安装说明](docs/deployment/INSTALL.md)。
 
-完整的首次启动、持久化、OAuth、备份与升级步骤见[安装部署说明](docs/deployment/INSTALL.md)。systemd 示例为[guide.service](docs/deployment/guide.service)，需管理员按实际路径和用户配置，未自动安装或启用。当前没有已发布的官方 Docker 镜像或一键安装源。
+完整的首次启动、持久化、OAuth、备份与升级步骤见[安装部署说明](docs/deployment/INSTALL.md)。systemd 示例为[guide.service](docs/deployment/guide.service)，需管理员按实际路径和用户配置，未自动安装或启用。Guide 不提供官方 Docker 镜像；systemd 部署可使用上述官方安装器。
 
 GitHub OAuth 是可选登录方式；先用应急密码登录后台“安全”页面，配置自己的 OAuth App Client ID、Client Secret 和用户名白名单。回调为 `https://你的域名/api/auth/github/callback`；空白名单拒绝所有 GitHub 用户。`guide.db`、备份和密码日志属于敏感数据，升级前先做一致性备份。
 
@@ -129,6 +134,6 @@ Guide is based on monitor-probe/monitor and is distributed under the terms of th
 
 ## 开发、安全与发布
 
-开发检查见 [CONTRIBUTING.md](CONTRIBUTING.md)，漏洞请按 [SECURITY.md](SECURITY.md) 私下报告。版本变更见 [CHANGELOG](docs/CHANGELOG.md)。CI 在 main push/PR 执行两前端完整检查、Rust fmt/全量测试/release build、Updater/Release verifier 测试，以及固定版本的 ShellCheck（warning/error）、workflow 检查和 Gitleaks 工作区/完整历史扫描；`v*` tag 发布工作流先通过同样的安全检查，再重新验证版本、测试和构建，校验白名单中的四项资产后发布到 GitHub Releases。
+开发检查见 [CONTRIBUTING.md](CONTRIBUTING.md)，漏洞请按 [SECURITY.md](SECURITY.md) 私下报告。正式版本与更新日志见 [GitHub Releases](https://github.com/NSJLUCAS/Guide/releases)，既有仓库记录保留在 [CHANGELOG](docs/CHANGELOG.md)。CI 在 main push/PR 执行两前端完整检查、Rust fmt/全量测试/release build、Updater/Release verifier 测试，以及固定版本的 ShellCheck（warning/error）、workflow 检查和 Gitleaks 工作区/完整历史扫描；`v*` tag 发布工作流先通过同样的安全检查，再重新验证版本、测试和构建，校验白名单中的四项资产后发布到 GitHub Releases。
 
 Guide 的上游来源、原版权与第三方授权说明见本页的来源章节、[LICENSE](LICENSE) 和 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
