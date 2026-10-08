@@ -1,4 +1,4 @@
-import { api } from "./api.ts"
+import { api, ApiError } from "./api.ts"
 import type { Service, ServiceStatus } from "./services.ts"
 import { currentService } from "./services.ts"
 
@@ -25,4 +25,27 @@ export function servicesFromApi(value: unknown, now = Date.now()): Service[] {
 
 export async function getServices(signal?: AbortSignal): Promise<Service[]> {
   return servicesFromApi(await api<unknown>("/services", { signal, cache: "no-store" }))
+}
+
+export async function getCategories(signal?: AbortSignal): Promise<string[] | undefined> {
+  let value: unknown
+  try { value = await api<unknown>("/categories", { signal, cache: "no-store" }) }
+  catch (error) { if (error instanceof ApiError && error.status === 404) return undefined; throw error }
+  if (!Array.isArray(value) || value.some(row => !row || !Number.isSafeInteger(row.id) || row.id <= 0
+    || typeof row.name !== "string" || !row.name || !Number.isSafeInteger(row.sort)
+    || !Number.isSafeInteger(row.count) || row.count < 0)
+    || new Set(value.map(row => row.id)).size !== value.length
+    || new Set(value.map(row => row.name)).size !== value.length) throw new Error("分类数据格式不正确，请重试")
+  return value.map(row => row.name)
+}
+
+/** A rename can land between the two reads. Retry before publishing mixed data. */
+export async function getNavigationData(signal?: AbortSignal) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const [services, managedCategories] = await Promise.all([getServices(signal), getCategories(signal)])
+    if (managedCategories === undefined || services.every(service => !service.category || managedCategories.includes(service.category))) {
+      return { services, managedCategories }
+    }
+  }
+  throw new Error("分类已发生变化，请重试")
 }

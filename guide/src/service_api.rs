@@ -11,6 +11,7 @@ use serde_json::json;
 
 use crate::api::{answer, fail, Admin};
 use crate::auth::authed;
+use crate::category::CategoryInput;
 use crate::service::ServiceInput;
 use crate::Shared;
 
@@ -19,6 +20,81 @@ pub fn routes() -> Router<Shared> {
         .route("/api/services", get(list).post(create))
         .route("/api/services/order", put(reorder))
         .route("/api/services/{id}", put(update).delete(delete))
+        .route("/api/categories", get(categories).post(create_category))
+        .route("/api/categories/order", put(reorder_categories))
+        .route("/api/categories/{id}", put(rename_category).delete(delete_category))
+}
+
+async fn categories(State(app): State<Shared>, headers: HeaderMap) -> Response {
+    let full = authed(&app, &headers);
+    if !full && !app.public_page() {
+        return answer(StatusCode::UNAUTHORIZED, "需要登录后查看");
+    }
+    match app.db.categories(full) {
+        Ok(rows) => ([(header::CACHE_CONTROL, "no-store")], Json(rows)).into_response(),
+        Err(e) => fail(e),
+    }
+}
+
+fn category_input(body: Result<Json<CategoryInput>, JsonRejection>) -> Result<String, Response> {
+    let Ok(Json(input)) = body else {
+        return Err(answer(StatusCode::BAD_REQUEST, "分类数据格式不对"));
+    };
+    crate::category::category_name(&input.name).map_err(fail)
+}
+
+async fn create_category(
+    _: Admin,
+    State(app): State<Shared>,
+    body: Result<Json<CategoryInput>, JsonRejection>,
+) -> Response {
+    let name = match category_input(body) {
+        Ok(name) => name,
+        Err(response) => return response,
+    };
+    match app.db.create_category(&name) {
+        Ok(()) => (StatusCode::CREATED, Json(json!({"ok": true}))).into_response(),
+        Err(e) => fail(e),
+    }
+}
+
+async fn rename_category(
+    _: Admin,
+    State(app): State<Shared>,
+    Path(id): Path<i64>,
+    body: Result<Json<CategoryInput>, JsonRejection>,
+) -> Response {
+    let name = match category_input(body) {
+        Ok(name) => name,
+        Err(response) => return response,
+    };
+    match app.db.rename_category(id, &name) {
+        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        Ok(false) => answer(StatusCode::NOT_FOUND, "分类已被删除，请刷新"),
+        Err(e) => fail(e),
+    }
+}
+
+async fn delete_category(_: Admin, State(app): State<Shared>, Path(id): Path<i64>) -> Response {
+    match app.db.delete_category(id) {
+        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        Ok(false) => answer(StatusCode::NOT_FOUND, "分类已被删除，请刷新"),
+        Err(e) => fail(e),
+    }
+}
+
+async fn reorder_categories(
+    _: Admin,
+    State(app): State<Shared>,
+    body: Result<Json<Order>, JsonRejection>,
+) -> Response {
+    let Ok(Json(order)) = body else {
+        return answer(StatusCode::BAD_REQUEST, "分类排序数据格式不对");
+    };
+    match app.db.reorder_categories(&order.ids) {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => fail(e),
+    }
 }
 
 async fn list(State(app): State<Shared>, headers: HeaderMap) -> Response {
@@ -155,6 +231,188 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn category_http_auth_validation_and_stale_order_are_enforced() {
+        let server = Server::new().await;
+        for (method, path, body) in [
+            (reqwest::Method::POST, "/api/categories", json!({"name":"empty"})),
+            (reqwest::Method::PUT, "/api/categories/1", json!({"name":"new"})),
+            (reqwest::Method::DELETE, "/api/categories/1", json!({})),
+            (reqwest::Method::PUT, "/api/categories/order", json!({"ids":[]})),
+        ] {
+            assert_eq!(
+                server.request(method, path, false).json(&body).send().await.unwrap().status(),
+                StatusCode::UNAUTHORIZED
+            );
+        }
+        for name in ["", "   ", "bad\nname", &"长".repeat(101)] {
+            assert_eq!(
+                server
+                    .request(reqwest::Method::POST, "/api/categories", true)
+                    .json(&json!({"name":name}))
+                    .send()
+                    .await
+                    .unwrap()
+                    .status(),
+                StatusCode::BAD_REQUEST
+            );
+        }
+        assert_eq!(
+            server
+                .request(reqwest::Method::POST, "/api/categories", true)
+                .json(&json!({"name":" 空分类 "}))
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::CREATED
+        );
+        assert_eq!(
+            server
+                .request(reqwest::Method::POST, "/api/categories", true)
+                .json(&json!({"name":"空分类"}))
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            server
+                .request(reqwest::Method::POST, "/api/categories", true)
+                .json(&json!({"name":"x","unknown":true}))
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::BAD_REQUEST
+        );
+        for method in [reqwest::Method::PUT, reqwest::Method::DELETE] {
+            assert_eq!(
+                server
+                    .request(method, "/api/categories/999", true)
+                    .json(&json!({"name":"missing"}))
+                    .send()
+                    .await
+                    .unwrap()
+                    .status(),
+                StatusCode::NOT_FOUND
+            );
+        }
+        for ids in [json!([]), json!([1, 1]), json!([999])] {
+            assert_eq!(
+                server
+                    .request(reqwest::Method::PUT, "/api/categories/order", true)
+                    .json(&json!({"ids":ids}))
+                    .send()
+                    .await
+                    .unwrap()
+                    .status(),
+                StatusCode::BAD_REQUEST
+            );
+        }
+        assert_eq!(server.app.db.categories(true).unwrap().len(), 1);
+        server.app.db.set("public_page", "off").unwrap();
+        assert_eq!(
+            server.request(reqwest::Method::GET, "/api/categories", false).send().await.unwrap().status(),
+            StatusCode::UNAUTHORIZED
+        );
+    }
+
+    #[tokio::test]
+    async fn category_http_empty_order_rename_migration_and_occupied_delete() {
+        use crate::service::CheckResult;
+        let server = Server::new().await;
+        for name in ["空分类", "影音", "工具"] {
+            server.app.db.create_category(name).unwrap();
+        }
+        for (name, public, enabled) in
+            [("visible", true, true), ("private", false, true), ("disabled", true, false)]
+        {
+            let response=server.request(reqwest::Method::POST,"/api/services",true).json(&json!({
+                "name":name,"url":"https://example.com","category":"工具","sort":81,"public":public,"enabled":enabled
+            })).send().await.unwrap();
+            assert_eq!(response.status(), StatusCode::CREATED);
+        }
+        let target = server.app.db.service_check_targets().unwrap().remove(0);
+        server
+            .app
+            .db
+            .save_service_check(
+                &target,
+                &CheckResult {
+                    status: "protected",
+                    response_ms: None,
+                    checked_at: chrono::Utc::now().timestamp(),
+                    http_status: Some(403),
+                    error_kind: Some("cloudflare_challenge"),
+                },
+            )
+            .unwrap();
+        let ids: Vec<i64> = server.app.db.categories(true).unwrap().iter().map(|c| c.id).collect();
+        assert_eq!(
+            server
+                .request(reqwest::Method::PUT, "/api/categories/order", true)
+                .json(&json!({"ids":[ids[2],ids[0],ids[1]]}))
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::NO_CONTENT
+        );
+        for admin in [false, true] {
+            let response =
+                server.request(reqwest::Method::GET, "/api/categories", admin).send().await.unwrap();
+            assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+            let rows: Vec<Value> = response.json().await.unwrap();
+            assert_eq!(
+                rows.iter().map(|c| c["name"].as_str().unwrap()).collect::<Vec<_>>(),
+                vec!["工具", "空分类", "影音"]
+            );
+            assert_eq!(rows[0]["count"], if admin { 3 } else { 1 });
+            assert_eq!(rows[1]["count"], 0);
+        }
+        assert_eq!(
+            server
+                .request(reqwest::Method::PUT, &format!("/api/categories/{}", ids[2]), true)
+                .json(&json!({"name":"新工具"}))
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::NO_CONTENT
+        );
+        assert!(server.app.db.services(true).unwrap().iter().all(|s| s.category == "新工具" && s.sort == 81));
+        assert_eq!(
+            serde_json::to_value(server.app.db.service_views(true, chrono::Utc::now().timestamp()).unwrap())
+                .unwrap()[0]["status"],
+            "protected"
+        );
+        let response = server
+            .request(reqwest::Method::DELETE, &format!("/api/categories/{}", ids[2]), true)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert!(response.text().await.unwrap().contains("先迁移"));
+        for service in server.app.db.services(true).unwrap() {
+            assert_eq!(server.request(reqwest::Method::PUT,&format!("/api/services/{}",service.id),true).json(&json!({
+                "name":service.name,"url":service.url,"category":"影音","sort":service.sort,"public":service.public,"enabled":service.enabled
+            })).send().await.unwrap().status(),StatusCode::OK);
+        }
+        assert_eq!(
+            server
+                .request(reqwest::Method::DELETE, &format!("/api/categories/{}", ids[2]), true)
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::NO_CONTENT
+        );
+        assert_eq!(server.app.db.services(true).unwrap().len(), 3);
+        assert_eq!(server.app.db.categories(true).unwrap()[0].name, "空分类");
+    }
+
+    #[tokio::test]
     async fn service_http_denied_create_returns_400_without_database_changes() {
         let server = Server::new().await;
         let before = database_snapshot(&server.app.db);
@@ -184,7 +442,7 @@ mod tests {
 
     fn database_snapshot(db: &Db) -> Vec<Vec<Vec<String>>> {
         let conn = db.conn();
-        ["service", "service_status", "node"]
+        ["service", "service_status", "category", "node"]
             .into_iter()
             .map(|table| {
                 let mut stmt = conn.prepare(&format!("SELECT * FROM {table} ORDER BY 1")).unwrap();
@@ -227,7 +485,7 @@ mod tests {
         let before = database_snapshot(&server.app.db);
         let path = format!("/api/services/{}", service["id"]);
         let response = server.request(reqwest::Method::PUT, &path, true)
-            .json(&json!({"name":"changed","url":"http://100.100.100.200/latest/meta-data/","sort":999,"public":false,"enabled":true,"checkEnabled":true}))
+            .json(&json!({"name":"changed","url":"http://100.100.100.200/latest/meta-data/","category":"must-not-create","sort":999,"public":false,"enabled":true,"checkEnabled":true}))
             .send().await.unwrap();
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         assert_eq!(database_snapshot(&server.app.db), before);

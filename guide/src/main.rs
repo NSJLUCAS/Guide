@@ -28,6 +28,7 @@ mod agent_ws;
 mod api;
 mod auth;
 mod brand;
+mod category;
 mod db;
 mod frontend;
 mod icon_libraries;

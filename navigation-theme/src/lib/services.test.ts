@@ -38,6 +38,15 @@ test("分类按数据顺序计数，空分类独立展示，空数据不产生�
   assert.deepEqual(categoriesOf(services), [{ value: "影音娱乐", label: "影音娱乐", count: 1 }, { value: "开发工具", label: "开发工具", count: 2 }, { value: "", label: "未分类", count: 1 }])
   assert.deepEqual(categoriesOf([]), [])
 })
+
+test("管理分类按后台顺序显示空分类，未分类置后，网站排序不影响顺序", () => {
+  assert.deepEqual(categoriesOf(services, ["空分类","开发工具","影音娱乐"]), [
+    {value:"空分类",label:"空分类",count:0}, {value:"开发工具",label:"开发工具",count:2},
+    {value:"影音娱乐",label:"影音娱乐",count:1}, {value:"",label:"未分类",count:1},
+  ])
+  assert.equal(categoriesOf([...services].reverse(), ["空分类","开发工具","影音娱乐"])[0].value,"空分类")
+  assert.deepEqual(categoriesOf([], ["空分类"]), [{value:"空分类",label:"空分类",count:0}])
+})
 test("名称、简介、域名搜索忽略大小写和首尾空格，并与分类相交", () => {
   assert.deepEqual(filterServices(services, null, "  GITHUB  ").map(s => s.id), [2])
   assert.deepEqual(filterServices(services, "影音娱乐", "家庭").map(s => s.id), [1])

@@ -3,8 +3,8 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 import { ADMIN_SECTIONS, normaliseAdminPath } from "./navigation.ts"
 
-test("导航后台只有服务、主题、安全、设置", () => {
-  assert.deepEqual(ADMIN_SECTIONS.map(s => s.label), ["服务", "主题", "安全", "设置"])
+test("导航后台包含独立分类入口并保留现有入口", () => {
+  assert.deepEqual(ADMIN_SECTIONS.map(s => s.label), ["服务", "分类", "主题", "安全", "设置"])
 })
 
 test("登录与旧探针书签落到服务页，有效导航路由保持", () => {

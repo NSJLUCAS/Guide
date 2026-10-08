@@ -30,9 +30,14 @@ export function currentService(service: Service, now = Date.now()): Service {
   return service.status === "online" ? service : { ...service, responseMs: null }
 }
 
-export function categoriesOf(services: readonly Service[]) {
+export function categoriesOf(services: readonly Service[], managed?: readonly string[]) {
   const counts = new Map<string, number>()
   for (const service of services) counts.set(service.category, (counts.get(service.category) ?? 0) + 1)
+  if (managed !== undefined) {
+    const categories = managed.map(value => ({ value, label: value, count: counts.get(value) ?? 0 }))
+    if (counts.has("")) categories.push({ value: "", label: "未分类", count: counts.get("")! })
+    return categories
+  }
   return [...counts].map(([value, count]) => ({ value, label: value || "未分类", count }))
 }
 

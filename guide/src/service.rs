@@ -250,6 +250,7 @@ impl Db {
     pub fn create_service(&self, s: &ServiceInput) -> Result<Service> {
         let mut conn = self.conn();
         let tx = conn.transaction()?;
+        crate::category::ensure_category(&tx, &s.category)?;
         tx.execute(
             CREATE_SERVICE,
             params![
@@ -274,7 +275,7 @@ impl Db {
     pub fn update_service(&self, id: i64, s: &ServiceInput) -> Result<Option<Service>> {
         let mut conn = self.conn();
         let tx = conn.transaction()?;
-        tx.execute(
+        let changed = tx.execute(
             UPDATE_SERVICE,
             params![
                 s.name,
@@ -291,6 +292,9 @@ impl Db {
                 id
             ],
         )?;
+        if changed != 0 {
+            crate::category::ensure_category(&tx, &s.category)?;
+        }
         tx.execute("DELETE FROM service_status WHERE service_id=?1", [id])?;
         let service = tx.query_row(GET_SERVICE, [id], row).optional()?;
         tx.commit()?;
@@ -437,7 +441,10 @@ mod tests {
             assert_eq!(views[1]["status"], "offline");
             assert_eq!(views[2]["status"], "protected");
             assert!(views[1]["responseMs"].is_null() && views[2]["responseMs"].is_null());
-            assert_eq!(db.conn().query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(), 13);
+            assert_eq!(
+                db.conn().query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(),
+                crate::db::SCHEMA_VERSION
+            );
         }
         std::fs::remove_file(path).unwrap();
         std::fs::remove_file(backup).unwrap();
@@ -469,7 +476,10 @@ mod tests {
             })
             .unwrap();
         assert_eq!(stored, ("offline".into(), None, "cloudflare_challenge".into()));
-        assert_eq!(db.conn().query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(), 13);
+        assert_eq!(
+            db.conn().query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(),
+            crate::db::SCHEMA_VERSION
+        );
         let view = |now| serde_json::to_value(db.service_views(false, now).unwrap()).unwrap();
         for now in [1000, 1180] {
             assert_eq!(view(now)[0]["status"], "protected");

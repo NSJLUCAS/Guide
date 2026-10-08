@@ -5,7 +5,7 @@ import { ServiceCard } from "@/components/ServiceCard"
 import { ServiceSummary } from "@/components/ServiceSummary"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { getServices } from "@/lib/service-api"
+import { getNavigationData } from "@/lib/service-api"
 import { cardGridClass, type CardStyle } from "@/lib/card-style"
 import { useCardStyle } from "@/lib/use-card-style"
 import { categoriesOf, currentService, filterServices, type Service } from "@/lib/services"
@@ -61,15 +61,15 @@ function useTheme() {
 
 export default function App() {
   const cardStyle = useCardStyle()
-  const [state, setState] = useState<{ services: Service[]; loading: boolean; error: string }>({ services: [], loading: true, error: "" })
+  const [state, setState] = useState<{ services: Service[]; managedCategories?: string[]; loading: boolean; error: string }>({ services: [], loading: true, error: "" })
   const [attempt, setAttempt] = useState(0)
   useEffect(() => {
     const controller = new AbortController()
     let timer: ReturnType<typeof setTimeout> | undefined
     const load = async () => {
       try {
-        const services = await getServices(controller.signal)
-        if (!controller.signal.aborted) setState({ services, loading: false, error: "" })
+        const { services, managedCategories } = await getNavigationData(controller.signal)
+        if (!controller.signal.aborted) setState({ services, managedCategories, loading: false, error: "" })
       } catch (e) {
         if (!controller.signal.aborted) setState({ services: [], loading: false, error: e instanceof Error ? e.message : "请求失败" })
       } finally {
@@ -77,8 +77,12 @@ export default function App() {
         if (!controller.signal.aborted) timer = setTimeout(load, 30_000)
       }
     }
+    const refresh = () => setAttempt(value => value + 1)
+    const channel = typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel("navigation-categories")
+    if (channel) channel.onmessage = event => { if (event.data?.type === "refresh") refresh() }
+    window.addEventListener("focus", refresh)
     void load()
-    return () => { controller.abort(); clearTimeout(timer) }
+    return () => { controller.abort(); clearTimeout(timer); channel?.close(); window.removeEventListener("focus", refresh) }
   }, [attempt])
   const retry = () => {
     setState({ services: [], loading: true, error: "" })
@@ -88,8 +92,9 @@ export default function App() {
 }
 
 /** Cards, filters and statistics only consume converted data; fixtures can still supply it. */
-export function NavigationPage({ services, loading = false, error = "", onRetry, cardStyle = "standard" }: {
+export function NavigationPage({ services, managedCategories, loading = false, error = "", onRetry, cardStyle = "standard" }: {
   services: readonly Service[]
+  managedCategories?: readonly string[]
   loading?: boolean
   error?: string
   onRetry?: () => void
@@ -99,7 +104,7 @@ export function NavigationPage({ services, loading = false, error = "", onRetry,
   const [category, setCategory] = useState<string | null>(null)
   const [query, setQuery] = useState("")
   const [now, setNow] = useState(Date.now)
-  const categories = categoriesOf(services)
+  const categories = categoriesOf(services, managedCategories)
   const current = category === null || categories.some(c => c.value === category) ? category : null
   const shown = filterServices(services, current, query).map(service => currentService(service, Math.max(now, Date.now())))
   const tabs = [{ value: null, label: "全部", count: services.length }, ...categories]

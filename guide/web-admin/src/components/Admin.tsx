@@ -4,6 +4,7 @@ import { flushSync } from "react-dom"
 import { CalendarClock, Check, ChevronDown, ChevronRight, CircleQuestionMark, Copy, Download, GripVertical, Layers, Palette, Pencil, Plus, RefreshCw, Search, Send, Server, Settings, Shield, SlidersHorizontal, Trash2, Upload } from "lucide-react"
 import { toast } from "sonner"
 import { Services } from "@/components/Services"
+import { Categories } from "@/components/Categories"
 import { CardAppearance } from "@/components/CardAppearance"
 
 import { Badge } from "@/components/ui/badge"
@@ -3211,7 +3212,7 @@ export function Update({ versions, reload, nodes, site, refusal }: {
 // Each area is its own route rather than a tab, so a page can be linked to and a
 // reload returns to the same section.
 const SECTION_ICONS = {
-  "/admin/services": Layers, "/admin/themes": Palette,
+  "/admin/services": Layers, "/admin/categories": Layers, "/admin/themes": Palette,
   "/admin/security": Shield, "/admin/settings": Settings,
 } as const
 
@@ -3250,7 +3251,9 @@ export function Admin({
       </nav>
 
       <div className="min-w-0 flex-1">
-        {path === "/admin/themes" ? (
+        {path === "/admin/categories" ? (
+          <Categories />
+        ) : path === "/admin/themes" ? (
           <Themes />
         ) : path === "/admin/security" ? (
           <Security site={site} />

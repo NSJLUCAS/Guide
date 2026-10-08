@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { getServices, servicesFromApi } from "./service-api.ts"
+import { getNavigationData, getCategories, getServices, servicesFromApi } from "./service-api.ts"
 import { categoriesOf, filterServices, serviceSummary, responseLabel, checkedLabel } from "./services.ts"
 
 const bilibili = {
@@ -9,6 +9,26 @@ const bilibili = {
   category: "影音娱乐", public: true, enabled: true, sort: 0,
   status: "unknown", responseMs: null, checkedAt: null,
 }
+
+test("分类接口保留后台顺序和空分类，仅在旧 Hub 404 时回退", async () => {
+  const original = globalThis.fetch
+  try {
+    globalThis.fetch = async (input, init) => {
+      assert.equal(String(input), "/api/categories")
+      assert.equal(init?.cache, "no-store")
+      return Response.json([{ id: 2, name: "空分类", sort: 0, count: 0 }, { id: 1, name: "工具", sort: 1, count: 2 }])
+    }
+    assert.deepEqual(await getCategories(), ["空分类", "工具"])
+    globalThis.fetch = async () => new Response("", { status: 404 })
+    assert.equal(await getCategories(), undefined)
+    globalThis.fetch = async () => new Response("分类加载失败", { status: 503 })
+    await assert.rejects(getCategories(), /分类加载失败/)
+    for (const value of [{}, [{ id: 1, name: "工具", sort: 0, count: -1 }], [{ id: 1, name: "工具", sort: 0, count: 0 }, { id: 2, name: "工具", sort: 1, count: 0 }]]) {
+      globalThis.fetch = async () => Response.json(value)
+      await assert.rejects(getCategories(), /分类数据格式/)
+    }
+  } finally { globalThis.fetch = original }
+})
 
 test("真实 B站 Service 转换驱动分类、搜索和统计，未知响应不伪造 0ms", () => {
   const services = servicesFromApi([bilibili])
@@ -19,6 +39,22 @@ test("真实 B站 Service 转换驱动分类、搜索和统计，未知响应不
   assert.equal(checkedLabel(services[0].checkedAt, Date.now()), "尚未检测")
   assert.deepEqual(servicesFromApi([]), [])
   assert.throws(() => servicesFromApi({}), /数据格式/)
+})
+
+test("分类并发更名造成快照不匹配时重读，持续变化明确报错", async () => {
+  const original = globalThis.fetch
+  let reads = 0
+  try {
+    globalThis.fetch = async input => String(input).endsWith("/services")
+      ? Response.json([{ ...bilibili, category: ++reads === 1 ? "旧分类" : "新分类" }])
+      : Response.json([{ id: 1, name: "新分类", sort: 0, count: 1 }])
+    const snapshot = await getNavigationData()
+    assert.equal(reads, 2)
+    assert.equal(snapshot.services[0].category, "新分类")
+    assert.deepEqual(snapshot.managedCategories, ["新分类"])
+    globalThis.fetch = async input => String(input).endsWith("/services") ? Response.json([bilibili]) : Response.json([])
+    await assert.rejects(getNavigationData(), /分类已发生变化/)
+  } finally { globalThis.fetch = original }
 })
 
 test("生产 client 请求现有 /api/services，并传播加载错误用于重试", async () => {

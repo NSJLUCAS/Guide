@@ -32,6 +32,7 @@ async function main() {
       const endpoint = new URL(route.request().url()).pathname
       let value
       if (endpoint === '/api/public-config') value = { cardStyle: style }
+      else if (endpoint === '/api/categories') value = [{ id: 1, name: 'Test', sort: 0, count: 5 }]
       else if (endpoint === '/api/services') value = ['online', 'offline', 'protected', 'unknown', 'unchecked'].map((status, index) => ({
         id: index + 1, name: `Fixture ${status}`, url: 'https://example.com/', description: 'Website check fixture',
         icon: null, category: 'Test', checkEnabled: status !== 'unchecked', status, responseMs: 999,
