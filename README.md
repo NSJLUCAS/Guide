@@ -16,6 +16,16 @@ Guide 是一个网站与服务导航门户：用紧凑卡片查看服务、在�
 
 正式版本、Release Notes 和各版本附件统一见 [GitHub Releases](https://github.com/NSJLUCAS/Guide/releases)；安装与下载默认使用[最新稳定版本](https://github.com/NSJLUCAS/Guide/releases/latest)。
 
+## 让 AI 帮你部署
+
+将下面这段话复制给能操作你服务器的 AI Agent；它会先检查环境，再按官方文档部署。需要域名访问时，可让它配置可选的 HTTPS 反向代理。
+
+```text
+请先阅读 https://raw.githubusercontent.com/NSJLUCAS/Guide/main/llms.txt 及其中的官方部署指南，帮我部署最新稳定版 Guide。先检查服务器和已有实例，给出执行计划，按文档校验下载；如需域名 HTTPS，优先复用现有 Nginx/Caddy，使用 Cloudflare 时采用 Full (strict)。修改已有服务或高风险配置前先向我确认，完成后验证访问和服务状态，不公开凭据。
+```
+
+官方文档入口：[llms.txt](https://github.com/NSJLUCAS/Guide/blob/main/llms.txt)（[Raw](https://raw.githubusercontent.com/NSJLUCAS/Guide/main/llms.txt)）；完整流程见 [AI 部署指南](docs/deployment/AI_DEPLOYMENT.md)。
+
 ## 官方安装与升级器
 
 官方安装器从最新稳定 Release 获取，校验通过后才执行。支持范围、旧实例接入和恢复规则见[安装说明](docs/deployment/INSTALL.md)；各版本特有的兼容变化以对应 Release Notes 为准。

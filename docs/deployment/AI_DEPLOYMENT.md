@@ -28,6 +28,20 @@
 
 升级失败遵循 INSTALL 的完整 binary + DB/WAL/SHM 恢复步骤；SIGKILL、断电或磁盘故障不保证自动恢复。真实安装、旧部署升级和整机重启恢复只能根据实际执行证据报告，不把附件可下载或 mock 测试当作真机验收。
 
+## 可选：HTTPS 域名与反向代理
+
+仅在用户需要域名访问时执行。先确认用户控制的域名、DNS 管理权限、是否启用 Cloudflare 代理，以及现有 Nginx/Caddy 的管理方式。以下 `guide.example.com` 为匿名示例，执行时使用用户提供的域名，不把真实域名、IP、证书私钥或 DNS token 写入公开文档和日志。
+
+1. **只读检查冲突。** 核对 DNS 的 A/AAAA 记录、实际路由、80/443 监听进程、现有站点及同名域名配置、证书覆盖范围/有效期/续期方式，以及 Guide 的真实监听地址。默认同机上游为 `http://127.0.0.1:28080`；代理位于另一台机器或网络命名空间时，先核实可达的上游，不能直接套用 loopback 地址，也不要为反代把 Guide 明文后台开放到公网。
+2. **展示最小变更并确认。** 优先复用现有代理，只增加或调整目标域名的站点；不覆盖整个配置、不停用其他服务、不安装第二个代理争抢端口。备份相关配置并给出回退方式。修改现有服务、已有站点、共享证书、DNS/Cloudflare 设置前，说明影响范围并取得用户确认；更改防火墙关键规则等高风险操作仍须单独确认。没有代理时，先与用户确定采用 Nginx 还是 Caddy，再安装配置。
+3. **选择证书方案。** 优先复用覆盖目标域名且有效的证书，并核对私钥权限、完整证书链与自动续期。需要新证书时使用适合当前 DNS/代理拓扑的 ACME 验证流程；HTTP/TLS 验证须检查所需端口和路由，DNS 验证须有对应 provider 支持与最小权限凭据。不要公开 token，也不要通过临时停用其他网站来抢占验证端口。Caddy 使用自动 HTTPS 时保留可写、持久的证书数据目录；显式加载证书时另行核对续期安排。
+4. **接入现有代理。** Nginx 在目标域名的 HTTPS `server` 中配置证书与反代，将 `location /` 的 `proxy_pass` 指向真实 Guide 上游，保留请求路径、Host 和正确的转发协议头；管理/API 请求不要套用公共页面缓存。Caddy 在目标域名站点使用 `reverse_proxy` 指向该上游，可使用其自动 HTTPS 或明确加载已有证书。保留 `/admin/`、`/api/` 和可选 OAuth 回调路径，不擅自改为子路径部署；HTTPS/HTTP 重定向在目标站点配置，避免循环。参考 [Nginx 反代](https://nginx.org/en/docs/http/ngx_http_proxy_module.html)、[Nginx HTTPS](https://nginx.org/en/docs/http/configuring_https_servers.html)、[Caddy reverse_proxy](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy) 和[自动 HTTPS](https://caddyserver.com/docs/automatic-https)。
+5. **Cloudflare 可选接入。** 启用代理时，先确认源站 443 可从 Cloudflare 访问，且源站证书未过期、域名匹配并由受信任公共 CA 或 Cloudflare Origin CA 签发，再使用 [Full (strict)](https://developers.cloudflare.com/ssl/origin-configuration/ssl-modes/full-strict/)。检查设置作用于整个 zone 还是单个主机，避免影响其他域名；实际修改前取得确认。Full (strict) 验证的是 Cloudflare 到源站代理的 TLS，代理到同机 loopback Guide 可继续使用 HTTP。使用 [Origin CA](https://developers.cloudflare.com/ssl/origin-configuration/origin-ca/) 时，浏览器通常不信任其证书，关闭 Cloudflare 代理后的直连需改用公共受信任证书或另行配置客户端信任；不要以 Flexible、关闭校验或 `curl -k` 掩盖证书错误。
+6. **校验后平滑应用。** 用现有服务的配置路径和权限运行检查：Nginx 用 `nginx -t`；Caddy 用 `caddy validate --config <实际配置路径>`，Caddyfile 格式须指定 `--adapter caddyfile`。检查通过并完成上述确认后，按既有服务管理方式平滑 reload，随后检查状态和错误日志。失败时恢复本轮相关配置并重新校验，不重置 Guide 数据库或密码。
+7. **验收整个访问链路。** 先检查实际 Guide 上游，再检查源站 HTTPS 的 SNI/域名匹配和证书链，最后通过目标域名检查有效 HTTPS、预期 HTTP 跳转、首页、`/admin/` 登录及 `/api/public-config`；检查无重定向循环和混合内容、原站点仍可访问、证书续期已安排。Cloudflare Origin CA 的源站测试需显式使用相应 CA 信任，再验证经 Cloudflare 的浏览器访问。用户启用 OAuth 时核对回调为 `https://guide.example.com/api/auth/github/callback`（替换域名），变更既有 OAuth App 配置前确认。仅根据实际结果报告，不能仅凭代理服务 active 就声称部署成功。
+
+HTTPS 检查还须核对原实例是否显式配置 `--site` 及其协议/域名。显式 `--site http://...` 会优先于代理转发协议头，使登录 Cookie 不带 Secure；需要调整为目标 HTTPS 地址时，先说明 Guide 服务配置变更并取得确认，保留原 DB 和其他参数。未配置 `--site` 时核实代理发送正确的 `X-Forwarded-Proto`。验收 HTTPS 登录 Cookie 的 Secure 属性时不要记录或公开 Cookie 值。
+
 ## 维护规则
 
 本文和 [llms.txt](../../llms.txt) 使用 latest 稳定入口，不随普通发版修改。只有安装、安全、兼容或操作规则变化时更新对应文档。版本号只在现有构建元数据中维护，沿用 Release workflow 的一致性检查。
