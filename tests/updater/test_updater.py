@@ -230,6 +230,40 @@ class UpdaterTest(unittest.TestCase):
         self.assertEqual(self.unit.read_bytes(), before)
         self.assertEqual(next((custom.parent / 'backups').iterdir()).joinpath('monitor.db').read_bytes(), custom.read_bytes())
 
+    def namespace_decoy(self, path, directive):
+        self.state['path_map'] = {path: str(self.db)}
+        self.unit.write_text('[Service]\nExecStart=/opt/guide/guide-hub --db "' + path +
+                             '" --listen 127.0.0.1:28080\n' + directive + '\n')
+        self.unchanged()
+
+    def test_private_tmp_database_refused(self):
+        self.namespace_decoy('/tmp/guide.db', 'PrivateTmp=yes')
+
+    def test_private_var_tmp_database_refused(self):
+        self.namespace_decoy('/var/tmp/guide.db', 'PrivateTmp=disconnected')
+
+    def test_protect_home_tmpfs_database_refused(self):
+        self.state['protect_home'] = 'tmpfs'
+        self.namespace_decoy('/home/guide/guide.db', 'ProtectHome=tmpfs')
+
+    def test_mount_and_extension_namespaces_refused(self):
+        for key in ['MountImages', 'ExtensionImages', 'ExtensionDirectories']:
+            with self.subTest(key=key):
+                self.unit.write_text('[Service]\nExecStart=/opt/guide/guide-hub --db /var/lib/guide/guide.db --listen 127.0.0.1:28080\n'
+                                     + key + '=/example\n')
+                self.unchanged()
+
+    def test_backup_reserved_database_names_refused(self):
+        for name in ['METADATA.json', 'failed-state']:
+            with self.subTest(name=name):
+                custom = self.db.parent / name
+                self.db.replace(custom)
+                self.db = custom
+                self.state['db'] = str(custom)
+                self.unit.write_text('[Service]\nExecStart="' + self.binary.as_posix() + '" --db "' + custom.as_posix() +
+                                     '" --listen 127.0.0.1:28080\n')
+                self.unchanged()
+
     def test_failed_start_rolls_back_binary_and_database(self):
         for suffix in ['-wal', '-shm']:
             Path(str(self.db) + suffix).write_bytes(suffix.encode())

@@ -7,7 +7,7 @@ exec python3 - "$0" "$@" <<'GUIDE_PYTHON'
 import hashlib
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import shlex
 import shutil
@@ -145,13 +145,24 @@ def installed():
         require(value and not any(ord(c) < 32 for c in value), 'Invalid ExecStart value')
         values[flag] = value
     require('--db' in values and '--listen' in values, 'ExecStart must explicitly provide --db and --listen')
+    paths = [PurePosixPath(words[0]), PurePosixPath(values['--db'])]
+    for property_name, roots, hidden in [
+        ('PrivateTmp', ['/tmp', '/var/tmp'], {'yes', 'true', '1', 'disconnected'}),
+        ('ProtectHome', ['/home', '/root', '/run/user'], {'yes', 'true', '1', 'tmpfs'}),
+    ]:
+        if prop(property_name).lower() in hidden:
+            require(not any(PurePosixPath(root) == path or PurePosixPath(root) in path.parents
+                            for root in roots for path in paths),
+                    'Unsupported private service filesystem path: ' + property_name)
     binary, db = Path(words[0]), Path(values['--db'])
+    require(db.name not in {'METADATA.json', 'failed-state'}, 'Database name conflicts with backup control files')
     safe_path(binary, True)
     safe_path(db, True)
     # Namespace remapping would make even an absolute --db ambiguous.
     for raw in text.splitlines():
         key, sep, value = raw.strip().partition('=')
-        if sep and key.strip() in ['RootDirectory', 'RootImage', 'BindPaths', 'BindReadOnlyPaths', 'TemporaryFileSystem']:
+        if sep and key.strip() in ['RootDirectory', 'RootImage', 'BindPaths', 'BindReadOnlyPaths',
+                                  'TemporaryFileSystem', 'MountImages', 'ExtensionImages', 'ExtensionDirectories']:
             require(not value.strip(), 'Unsupported service filesystem namespace')
     return binary, db, values['--listen']
 

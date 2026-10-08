@@ -9,7 +9,23 @@ concurrency:
   group: guide-release-${{ github.ref }}
   cancel-in-progress: false
 jobs:
+  security:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install workflow parser
+        run: python3 -m pip install 'PyYAML==6.0.3'
+      - name: ShellCheck, workflow validation and both Gitleaks scans
+        run: bash scripts/check-security.sh
   verify-and-package:
+    needs: security
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     defaults:
@@ -94,6 +110,7 @@ jobs:
       - name: Verify embedded assets and assemble a clean archive
         working-directory: .
         run: |
+          set -euo pipefail
           test -s guide/web-admin/dist/index.html
           test -s navigation-theme/dist/index.html
           test -s guide/target/theme/theme.json

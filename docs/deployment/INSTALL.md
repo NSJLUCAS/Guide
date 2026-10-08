@@ -4,7 +4,7 @@
 
 ## 官方安装与升级器（下一正式版本）
 
-`install-guide.sh` 尚未随正式 Release 发布，已发布 v1.0.0 的 tag/资产保持原样。以下命令在未来正式 Release 包含安装器、归档 SHA 与 `sha256sums.txt` 后才可用。目前验证包括 mock/fixture 自动测试；真实 Linux/systemd/SQLite/回滚及重启恢复仍待验收。
+`install-guide.sh` 尚未随正式 Release 发布，已发布 v1.0.0 的 tag/资产保持原样。以下命令在未来正式 Release 包含安装器、归档 SHA 与 `sha256sums.txt` 后才可用。mock/fixture 自动测试与 Debian 上真实 systemd 安装/升级、SQLite 数据保护、失败回滚及面板预览已验收；实际未来 Release 的发布/下载链路和重启恢复仍未验证。
 
 ```sh
 curl -fsSL https://github.com/NSJLUCAS/Guide/releases/latest/download/install-guide.sh -o install-guide.sh
@@ -30,7 +30,7 @@ guide-update --help
 
 下载顺序为 manifest、归档、独立 `.sha256` 和安装器。两个归档 SHA 来源必须一致，归档和安装器分别校验；只允许现有七个顶层普通文件，拒绝路径穿越、绝对路径、链接、特殊文件、重复成员、额外目录和非 binary 的可执行文件。所有解包在私有临时目录中逐文件复制，再验证 ELF x86_64 和版本；校验完成前不停止服务，不替换 binary/DB/updater。已保存 updater 需要自更新且 Hub 也有新版时，先做相同完整预检，再安全替换并 exec 新 updater。
 
-升级读取 `systemctl cat guide.service`，包含 drop-in 的有效 `ExecStart`；必须是直接执行绝对路径 guide-hub，并明确绝对 `--db` 与 `--listen`。现有 unit、listen、WorkingDirectory、User 和 hardening 不覆盖。不支持 wrapper、相对 DB、变量/specifier、复杂转义或 filesystem namespace 映射；磁盘 unit 未 daemon-reload、真实 DB 不存在或路径不确定时拒绝升级，绝不猜测创建新库。符号链接路径和硬链接 DB 也拒绝。
+升级读取 `systemctl cat guide.service`，包含 drop-in 的有效 `ExecStart`；必须是直接执行绝对路径 guide-hub，并明确绝对 `--db` 与 `--listen`。现有 unit、listen、WorkingDirectory、User 和 hardening 不覆盖。不支持 wrapper、相对 DB、变量/specifier、复杂转义或 filesystem namespace 映射；PrivateTmp 的 `/tmp`/`/var/tmp` 和 ProtectHome 隐藏目录中的 binary/DB 路径也拒绝，默认 `/opt` 与 `/var/lib` 路径不受影响。磁盘 unit 未 daemon-reload、真实 DB 不存在或路径不确定时拒绝升级，绝不猜测创建新库。符号链接路径、硬链接 DB，以及与备份控制文件冲突的 DB 名称 `METADATA.json`/`failed-state` 也拒绝。
 
 服务停止且 MainPID 为 0 后，完整复制实际 DB 和存在的 `-wal`/`-shm` 到 `<DB目录>/backups/<UTC时间>-<随机ID>/`；旧 binary 放在 `<binary目录>/backups/<UTC时间>-<随机ID>/guide-hub`。备份 root-only，不自动清理旧备份，INFO 记录原版本和 DB 备份位置。成功保留现有配置/迁移结果，updater 不修改 Service、分类、图标库、cardStyle、OAuth 或密码/session 设置。
 

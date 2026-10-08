@@ -18,7 +18,7 @@ Guide 是一个网站与服务导航门户：用紧凑卡片查看服务、在�
 
 ## 官方安装与升级器（下一正式版本）
 
-源码中的 `install-guide.sh` 正在验证，**已发布的 v1.0.0 没有此资产**。以下命令需等未来正式 Release 包含安装器与 `sha256sums.txt` 后使用；当前请按下方 v1.0.0 手动部署说明安装。真实 Linux/systemd/回滚验收尚待完成。
+源码中的 `install-guide.sh` 尚未随正式 Release 发布，**已发布的 v1.0.0 没有此资产**。以下命令需等未来正式 Release 包含安装器与 `sha256sums.txt` 后使用；当前请按下方 v1.0.0 手动部署说明安装。Debian 上的真实 systemd 安装/升级、SQLite 数据保护及失败回滚已验收；实际未来 Release 下载与发布链路仍待发版验证。
 
 首次安装：
 
@@ -123,6 +123,6 @@ Guide is based on monitor-probe/monitor and is distributed under the terms of th
 
 ## 开发、安全与发布
 
-开发检查见 [CONTRIBUTING.md](CONTRIBUTING.md)，漏洞请按 [SECURITY.md](SECURITY.md) 私下报告。版本变更见 [CHANGELOG](docs/CHANGELOG.md)。CI 在 main push/PR 执行两前端完整检查、Rust fmt/全量测试/release build；`v*` tag 发布工作流重新验证版本、测试和构建，打包 Linux x86_64 制品及 SHA-256 并发布到 GitHub Releases。
+开发检查见 [CONTRIBUTING.md](CONTRIBUTING.md)，漏洞请按 [SECURITY.md](SECURITY.md) 私下报告。版本变更见 [CHANGELOG](docs/CHANGELOG.md)。CI 在 main push/PR 执行两前端完整检查、Rust fmt/全量测试/release build、Updater/Release verifier 测试，以及固定版本的 ShellCheck（warning/error）、workflow 检查和 Gitleaks 工作区/完整历史扫描；`v*` tag 发布工作流先通过同样的安全检查，再重新验证版本、测试和构建，校验白名单中的四项资产后发布到 GitHub Releases。
 
 Guide 的上游来源、原版权与第三方授权说明见本页的来源章节、[LICENSE](LICENSE) 和 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
