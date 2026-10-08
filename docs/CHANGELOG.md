@@ -1,8 +1,14 @@
 # 更新日志
 
-## 1.1.0（尚未发布）
+正式版本和更新日志统一维护在 [GitHub Releases](https://github.com/NSJLUCAS/Guide/releases)。查看[最新稳定版本及 Release Notes](https://github.com/NSJLUCAS/Guide/releases/latest)；今后的发版无需向本文件重复追加记录。
 
-本分支的发版准备记录；v1.0.0 仍是当前已发布正式版本。以下安装器功能仅在 v1.1.0 正式发布后可使用。
+## 仓库历史记录
+
+以下保留迁移前已有的更新记录，不再作为持续维护的版本来源。各版本正式说明以对应 GitHub Release 为准。
+
+### [1.1.0](https://github.com/NSJLUCAS/Guide/releases/tag/v1.1.0)
+
+已正式发布；以下为原仓库中的功能摘要。
 
 - Guide 官方一键安装器 `install-guide.sh`，仅使用 NSJLUCAS/Guide 正式更新源。
 - `guide-update` 一键升级，`--check` 严格只读检查当前与最新正式版本，不自动降级。
@@ -14,7 +20,7 @@
 - 支持已有 v1.0.0 `guide.service` 首次接入，无需预先存在 updater；保留自定义路径、systemd 配置、OAuth、Service、图标库和密码。可识别的未纳管实例拒绝首次安装；其他部署按文档人工迁移。
 - 数据库 schema 保持 13，既有前端功能、认证和兼容协议保持。
 
-## 1.0.0
+### [1.0.0](https://github.com/NSJLUCAS/Guide/releases/tag/v1.0.0)
 
 Guide 首个公开版本。
 
