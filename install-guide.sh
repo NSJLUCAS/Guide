@@ -177,7 +177,7 @@ def installed():
                             for root in roots for path in paths),
                     'Unsupported private service filesystem path: ' + property_name)
     binary, db = Path(words[0]), Path(values['--db'])
-    require(db.name not in {'METADATA.json', 'failed-state'}, 'Database name conflicts with backup control files')
+    require(db.name not in {'METADATA.json', 'failed-state', 'backups'}, 'Database name conflicts with backup control files')
     safe_path(binary, True)
     safe_path(db, True)
     # Namespace remapping would make even an absolute --db ambiguous.

@@ -363,7 +363,7 @@ class UpdaterTest(unittest.TestCase):
                 self.assertIn('Unsupported service filesystem namespace', self.output)
 
     def test_backup_reserved_database_names_refused(self):
-        for name in ['METADATA.json', 'failed-state']:
+        for name in ['METADATA.json', 'failed-state', 'backups']:
             with self.subTest(name=name):
                 custom = self.db.parent / name
                 self.db.replace(custom)
