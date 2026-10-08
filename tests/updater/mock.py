@@ -137,7 +137,7 @@ elif command == 'systemctl':
         prop = next(a.split('=', 1)[1] for a in args if a.startswith('--property='))
         values = {'LoadState': 'loaded' if state.get('service', True) else 'not-found',
                   'NeedDaemonReload': 'yes' if state.get('stale_unit') else 'no',
-                  'PrivateTmp': state.get('private_tmp', 'yes'),
+                  'PrivateTmp': state.get('private_tmp', 'no'),
                   'ProtectHome': state.get('protect_home', 'no'),
                   'ActiveState': 'active' if state.get('active') else 'inactive',
                   'SubState': 'running' if state.get('active') else 'dead',

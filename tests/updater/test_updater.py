@@ -232,12 +232,33 @@ class UpdaterTest(unittest.TestCase):
 
     def namespace_decoy(self, path, directive):
         self.state['path_map'] = {path: str(self.db)}
+        key, _, value = directive.partition('=')
+        self.state[{'PrivateTmp': 'private_tmp', 'ProtectHome': 'protect_home'}[key]] = value
         self.unit.write_text('[Service]\nExecStart=/opt/guide/guide-hub --db "' + path +
                              '" --listen 127.0.0.1:28080\n' + directive + '\n')
         self.unchanged()
+        self.assertIn('Unsupported private service filesystem path', self.output)
 
     def test_private_tmp_database_refused(self):
         self.namespace_decoy('/tmp/guide.db', 'PrivateTmp=yes')
+
+    def test_private_tmp_standard_paths_allowed(self):
+        self.state['private_tmp'] = 'yes'
+        with self.unit.open('a') as out:
+            out.write('PrivateTmp=yes\n')
+        self.assertEqual(self.run_script(), 0, self.output)
+        self.assertEqual(self.binary.read_bytes(), self.hub('1.0.1'))
+        self.assertTrue(self.state['active'])
+
+    def test_unconfigured_private_tmp_allows_host_temp_paths(self):
+        # Model Linux's TemporaryDirectory path on Windows as well. A plain
+        # custom unit has PrivateTmp=no, so these are actual host files.
+        self.state['path_map'] = {'/tmp/guide-fixture/guide-hub': str(self.binary),
+                                  '/tmp/guide-fixture/guide.db': str(self.db)}
+        self.unit.write_text('[Service]\nExecStart=/tmp/guide-fixture/guide-hub --db /tmp/guide-fixture/guide.db --listen 127.0.0.1:28080\n')
+        self.assertEqual(self.run_script(), 0, self.output)
+        self.assertEqual(self.binary.read_bytes(), self.hub('1.0.1'))
+        self.assertTrue(self.state['active'])
 
     def test_private_var_tmp_database_refused(self):
         self.namespace_decoy('/var/tmp/guide.db', 'PrivateTmp=disconnected')
@@ -252,6 +273,7 @@ class UpdaterTest(unittest.TestCase):
                 self.unit.write_text('[Service]\nExecStart=/opt/guide/guide-hub --db /var/lib/guide/guide.db --listen 127.0.0.1:28080\n'
                                      + key + '=/example\n')
                 self.unchanged()
+                self.assertIn('Unsupported service filesystem namespace', self.output)
 
     def test_backup_reserved_database_names_refused(self):
         for name in ['METADATA.json', 'failed-state']:
@@ -263,6 +285,7 @@ class UpdaterTest(unittest.TestCase):
                 self.unit.write_text('[Service]\nExecStart="' + self.binary.as_posix() + '" --db "' + custom.as_posix() +
                                      '" --listen 127.0.0.1:28080\n')
                 self.unchanged()
+                self.assertIn('Database name conflicts with backup control files', self.output)
 
     def test_failed_start_rolls_back_binary_and_database(self):
         for suffix in ['-wal', '-shm']:
