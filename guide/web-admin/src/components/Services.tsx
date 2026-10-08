@@ -6,7 +6,7 @@ import { IconPicker } from "@/components/IconPicker"
 import { WebsiteIcon } from "@/components/WebsiteIcon"
 import { CategoryPicker } from "@/components/CategoryPicker"
 import { ServiceIconPreview } from "@/components/ServiceIconPreview"
-import { categoriesChanged, categoryChoices, categoryOptions, normalizeCategory } from "@/lib/categories"
+import { categoriesChanged, getServiceData, categoryOptions, normalizeCategory } from "@/lib/categories"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -121,7 +121,7 @@ export function Services() {
     setLoading(true)
     setLoadError("")
     try {
-      const [list, categories] = await Promise.all([serviceApi.list(signal), categoryChoices(signal)])
+      const { services: list, managedCategories: categories } = await getServiceData(signal)
       if (current === generation.current && !signal?.aborted) { setServices(list); setManagedCategories(categories) }
     } catch (e) {
       if (current === generation.current && !signal?.aborted && (e as Error).name !== "AbortError") setLoadError((e as Error).message)

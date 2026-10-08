@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { categoryApi, categoryChoices, categoryName, categoriesFromApi, moveCategory, categoryOptions, normalizeCategory } from "./categories.ts"
+import { categoryApi, categoryChoices, categoryName, categoriesFromApi, getServiceData, moveCategory, categoryOptions, normalizeCategory } from "./categories.ts"
 
 test("所有服务的分类 trim、去重并忽略空分类", () => {
   assert.deepEqual(categoryOptions([{category:"工具"},{category:" 工具 "},{category:"影音"},{category:" "},{category:""}]), ["工具","影音"])
@@ -43,5 +43,35 @@ test("管理分类校验、箭头排序及接口请求保持一致", async () =>
     assert.equal(await categoryChoices(), undefined)
     globalThis.fetch = async () => new Response("加载失败", { status: 503 })
     await assert.rejects(categoryChoices(), /加载失败/)
+  } finally { globalThis.fetch = original }
+})
+
+test("服务加载重读更名快照并阻止持续不一致的数据用于编辑", async () => {
+  const original = globalThis.fetch
+  let reads = 0, persistent = false
+  const categories = [{ id: 1, name: "新分类", sort: 0, count: 1 }]
+  globalThis.fetch = async input => {
+    if (String(input) === "/api/categories") return Response.json(categories)
+    reads++
+    return Response.json([{ category: persistent || reads === 1 ? "旧分类" : "新分类" }])
+  }
+  try {
+    const data = await getServiceData()
+    assert.equal(data.services[0].category, "新分类")
+    assert.deepEqual(data.managedCategories, ["新分类"])
+    persistent = true; reads = 0
+    await assert.rejects(getServiceData(), /分类已发生变化/)
+    assert.ok(reads > 1 && reads <= 3)
+    globalThis.fetch = async input => String(input) === "/api/categories"
+      ? new Response("", { status: 404 }) : Response.json([{ category: "旧分类" }])
+    assert.equal((await getServiceData()).managedCategories, undefined)
+    globalThis.fetch = async () => new Response("需要登录", { status: 401 })
+    await assert.rejects(getServiceData(), /需要登录/)
+    const controller = new AbortController(); controller.abort()
+    globalThis.fetch = async (_input, init) => {
+      init?.signal?.throwIfAborted()
+      return Response.json([])
+    }
+    await assert.rejects(getServiceData(controller.signal), { name: "AbortError" })
   } finally { globalThis.fetch = original }
 })

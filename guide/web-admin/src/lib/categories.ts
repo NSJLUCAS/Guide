@@ -1,4 +1,4 @@
-import { api, ApiError, moveService } from "./api.ts"
+import { api, ApiError, moveService, serviceApi } from "./api.ts"
 
 export type Category = { id: number; name: string; sort: number; count: number }
 
@@ -35,6 +35,17 @@ export const categoryApi = {
 export async function categoryChoices(signal?: AbortSignal): Promise<string[] | undefined> {
   try { return (await categoryApi.list(signal)).map(category => category.name) }
   catch (error) { if (error instanceof ApiError && error.status === 404) return undefined; throw error }
+}
+
+/** A rename can commit between reads; publish only a consistent editable pair. */
+export async function getServiceData(signal?: AbortSignal) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const [services, managedCategories] = await Promise.all([serviceApi.list(signal), categoryChoices(signal)])
+    if (managedCategories === undefined || services.every(service => !service.category || managedCategories.includes(service.category))) {
+      return { services, managedCategories }
+    }
+  }
+  throw new Error("分类已发生变化，请重试")
 }
 
 export const moveCategory = moveService

@@ -90,6 +90,9 @@ impl ServiceInput {
         {
             refuse!("简介最多 2000 个字符，分类最多 100 个字符，图标最多 2048 个字符");
         }
+        if !self.category.is_empty() {
+            self.category = crate::category::category_name(&self.category)?;
+        }
         Ok(())
     }
 }

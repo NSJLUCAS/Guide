@@ -231,6 +231,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn service_category_names_reject_controls_without_mutating_data() {
+        let server = Server::new().await;
+        let existing = server.add("existing", true, true).await;
+        let before = database_snapshot(&server.app.db);
+        for category in ["ops\ninternal", "ops\tinternal", "ops\u{007f}internal", "ops\u{0085}internal"] {
+            for (method, path) in [
+                (reqwest::Method::POST, "/api/services".to_owned()),
+                (reqwest::Method::PUT, format!("/api/services/{}", existing["id"])),
+            ] {
+                let response = server
+                    .request(method, &path, true)
+                    .json(&json!({"name":"changed","url":"https://example.com","category":category}))
+                    .send()
+                    .await
+                    .unwrap();
+                assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{category:?}");
+                assert_eq!(database_snapshot(&server.app.db), before);
+            }
+        }
+        for category in ["", "  ", " 新分类 "] {
+            let response = server
+                .request(reqwest::Method::POST, "/api/services", true)
+                .json(&json!({"name":"legacy client","url":"https://example.com","category":category}))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::CREATED);
+            assert_eq!(response.json::<Value>().await.unwrap()["category"], category.trim());
+        }
+        assert_eq!(server.app.db.categories(true).unwrap()[0].name, "新分类");
+    }
+
+    #[tokio::test]
     async fn category_http_auth_validation_and_stale_order_are_enforced() {
         let server = Server::new().await;
         for (method, path, body) in [
