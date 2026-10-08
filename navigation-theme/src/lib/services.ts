@@ -1,4 +1,4 @@
-export type ServiceStatus = "online" | "offline" | "unknown" | "unchecked"
+export type ServiceStatus = "online" | "offline" | "protected" | "unknown" | "unchecked"
 
 /** Public card data. checkedAt is an ISO timestamp; missing measurements are null. */
 export type Service = {
@@ -21,7 +21,7 @@ export function currentService(service: Service, now = Date.now()): Service {
   if (service.checkEnabled === false || service.status === "unchecked") {
     return { ...service, status: "unchecked", responseMs: null, checkedAt: null }
   }
-  if (service.status === "online" || service.status === "offline") {
+  if (service.status === "online" || service.status === "offline" || service.status === "protected") {
     const checked = service.checkedAt ? Date.parse(service.checkedAt) : NaN
     if (!Number.isFinite(checked) || checked > now || now - checked > SERVICE_STALE_MS) {
       return { ...service, status: "unknown", responseMs: null }

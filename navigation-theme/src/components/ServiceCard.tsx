@@ -21,7 +21,7 @@ function ServiceIcon({ icon, small = false }: { icon: Service["icon"]; small?: b
 export function ServiceCard({ service, now, cardStyle = "standard" }: { service: Service; now: number; cardStyle?: CardStyle }) {
   if (cardStyle !== "standard") return <DenseServiceCard service={service} cardStyle={cardStyle} />
   const href = serviceHref(service.url)
-  const label = { online: "在线", offline: "离线", unknown: "未知", unchecked: "未检测" }[service.status]
+  const label = { online: "在线", offline: "离线", protected: "检测受限", unknown: "未知", unchecked: "未检测" }[service.status]
   return (
     <Card className="min-w-0 gap-0 p-4 transition-colors hover:border-ring" data-service-id={service.id} data-card-style="standard">
       <div className="flex items-start justify-between gap-3">
@@ -75,7 +75,7 @@ export function ServiceCard({ service, now, cardStyle = "standard" }: { service:
 /** Alternate layouts share the original icon, status, response and link rules. */
 function DenseServiceCard({ service, cardStyle }: { service: Service; cardStyle: "compact" | "minimal" }) {
   const href = serviceHref(service.url)
-  const label = { online: "在线", offline: "离线", unknown: "未知", unchecked: "未检测" }[service.status]
+  const label = { online: "在线", offline: "离线", protected: "检测受限", unknown: "未知", unchecked: "未检测" }[service.status]
   const compact = cardStyle === "compact"
   return (
     <Card className={cn("min-w-0 gap-0 transition-colors hover:border-ring", compact ? "rounded-lg p-3" : "rounded-lg px-3 py-2")}

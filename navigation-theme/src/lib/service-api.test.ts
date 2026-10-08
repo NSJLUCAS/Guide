@@ -54,3 +54,22 @@ test("真实状态保留未检测，过期/缺时间/未来时间不冒充在线
   assert.equal(servicesFromApi([{ ...online, checkedAt: new Date(now - 180_000).toISOString() }], now)[0].status, "online")
   assert.equal(servicesFromApi([{ ...online, status: "offline" }], now)[0].responseMs, null)
 })
+
+test("检测受限兼容旧状态，保留检查时间并按原规则过期", () => {
+  const now = Date.parse("2026-10-08T12:00:00Z")
+  const row = { ...bilibili, status: "protected", responseMs: 999, checkedAt: new Date(now).toISOString() }
+  const fresh = servicesFromApi([row], now)[0]
+  assert.equal(fresh.status, "protected")
+  assert.equal(fresh.responseMs, null)
+  assert.equal(fresh.checkedAt, row.checkedAt)
+  assert.equal(responseLabel(fresh), "—")
+  assert.equal(servicesFromApi([row], now + 180_000)[0].status, "protected")
+  for (const checkedAt of [null, "invalid", new Date(now - 181_000).toISOString(), new Date(now + 1000).toISOString()]) {
+    assert.equal(servicesFromApi([{ ...row, checkedAt }], now)[0].status, "unknown")
+  }
+  assert.equal(servicesFromApi([row], now + 181_000)[0].status, "unknown")
+  assert.equal(servicesFromApi([{ ...row, checkEnabled: false }], now)[0].status, "unchecked")
+  for (const status of ["online", "offline", "unknown", "unchecked", "future-status"]) {
+    assert.equal(servicesFromApi([{ ...row, status }], now)[0].status, status === "future-status" ? "unknown" : status)
+  }
+})

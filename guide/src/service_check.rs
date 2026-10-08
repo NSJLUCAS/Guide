@@ -12,7 +12,7 @@ use tokio::task::JoinSet;
 use tokio::time::{Instant, MissedTickBehavior};
 
 use crate::db::Db;
-use crate::service::{CheckResult, CheckTarget};
+use crate::service::{CheckResult, CheckTarget, CLOUDFLARE_CHALLENGE};
 use crate::service_target::{safe_addresses, target_allowed};
 use crate::Shared;
 
@@ -65,6 +65,11 @@ async fn probe(client: &Client, target: &CheckTarget) -> CheckResult {
                 if code.is_success() || code.is_redirection() {
                     result.status = "online";
                     result.response_ms = Some(start.elapsed().as_millis().min(i64::MAX as u128) as i64);
+                } else if response.headers().get("cf-mitigated").is_some_and(|value| value == "challenge") {
+                    // Cloudflare's explicit Challenge Page marker. Server/cf-ray
+                    // and HTTP error codes alone do not identify a challenge.
+                    result.status = "protected";
+                    result.error_kind = Some(CLOUDFLARE_CHALLENGE);
                 } else {
                     result.error_kind = Some("http_status");
                 }
@@ -214,13 +219,22 @@ mod tests {
                                 } else { Duration::from_millis(30) }).await;
                                 active.fetch_sub(1, Ordering::SeqCst);
                                 let head = match path.as_str() {
+                                    "/challenge" => "HTTP/1.1 403 Forbidden\r\ncf-mitigated: challenge\r\nContent-Length: 99999999\r\n\r\n",
+                                    "/challenge429" => "HTTP/1.1 429 Too Many Requests\r\nCf-Mitigated: challenge\r\nContent-Length: 0\r\n\r\n",
+                                    "/challenge503" => "HTTP/1.1 503 Service Unavailable\r\ncf-mitigated: challenge\r\nContent-Length: 0\r\n\r\n",
+                                    "/cf403" => "HTTP/1.1 403 Forbidden\r\nServer: cloudflare\r\ncf-ray: fixture\r\nContent-Length: 0\r\n\r\n",
+                                    "/plain429" => "HTTP/1.1 429 Too Many Requests\r\nContent-Length: 0\r\n\r\n",
+                                    "/plain503" => "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\n\r\n",
+                                    "/wrong-marker" => "HTTP/1.1 403 Forbidden\r\ncf-mitigated: not-challenge\r\nContent-Length: 0\r\n\r\n",
+                                    "/online-marker" => "HTTP/1.1 200 OK\r\ncf-mitigated: challenge\r\nContent-Length: 0\r\n\r\n",
+                                    "/redirect-marker" => "HTTP/1.1 302 Found\r\ncf-mitigated: challenge\r\nLocation: http://169.254.169.254/\r\nContent-Length: 0\r\n\r\n",
                                     "/redirect" => "HTTP/1.1 302 Found\r\nLocation: http://169.254.169.254/\r\nContent-Length: 0\r\n\r\n",
                                     "/fail" => "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n",
                                     "/headers" => "HTTP/1.1 200 OK\r\nContent-Length: 99999999\r\n\r\n",
                                     _ => "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n",
                                 };
                                 let _ = stream.write_all(head.as_bytes()).await;
-                                if path == "/headers" { tokio::time::sleep(Duration::from_secs(10)).await; }
+                                if path == "/headers" || path == "/challenge" { tokio::time::sleep(Duration::from_secs(10)).await; }
                             });
                         }
                         _ = connections.join_next(), if !connections.is_empty() => {}
@@ -290,6 +304,41 @@ mod tests {
         assert_eq!(result.status, "online");
         assert!(result.response_ms.unwrap() >= 20);
         assert_eq!(server.started.load(Ordering::SeqCst), 4, "redirect was not followed");
+    }
+
+    #[tokio::test]
+    async fn service_check_challenge_requires_explicit_header_and_never_reads_body() {
+        let server = Server::new().await;
+        let client = test_client(Duration::from_secs(1));
+        for (path, expected, code) in [
+            ("/challenge", "protected", 403),
+            ("/challenge429", "protected", 429),
+            ("/challenge503", "protected", 503),
+            ("/cf403", "offline", 403),
+            ("/plain429", "offline", 429),
+            ("/plain503", "offline", 503),
+            ("/wrong-marker", "offline", 403),
+            ("/online-marker", "online", 200),
+            ("/redirect-marker", "online", 302),
+        ] {
+            let result =
+                tokio::time::timeout(Duration::from_millis(800), probe(&client, &server.target(path)))
+                    .await
+                    .unwrap();
+            assert_eq!(result.status, expected, "{path}");
+            assert_eq!(result.http_status, Some(code));
+            assert_eq!(result.response_ms.is_some(), expected == "online");
+            assert_eq!(
+                result.error_kind,
+                match expected {
+                    "protected" => Some("cloudflare_challenge"),
+                    "offline" => Some("http_status"),
+                    _ => None,
+                }
+            );
+            assert!(result.checked_at > 0);
+        }
+        assert_eq!(server.started.load(Ordering::SeqCst), 9, "redirect must not be followed");
     }
 
     #[tokio::test]

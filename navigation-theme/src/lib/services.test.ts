@@ -22,6 +22,18 @@ test("缓存状态随时间过期，关检测和离线不显示响应时间", ()
   assert.equal(responseLabel(currentService(service({ status: "offline" }), now)), "—")
 })
 
+test("缓存的检测受限状态在刷新失败时仍过期，且不计作在线或离线", () => {
+  const protectedService = service({ status: "protected", checkedAt: new Date(now).toISOString(), responseMs: 999 })
+  assert.equal(currentService(protectedService, now + 180_000).status, "protected")
+  assert.equal(currentService(protectedService, now + 181_000).status, "unknown")
+  assert.equal(currentService(protectedService, now).responseMs, null)
+  assert.equal(currentService({ ...protectedService, checkEnabled: false }, now).status, "unchecked")
+  const stats = serviceSummary([service(), protectedService])
+  assert.equal(stats.online, 1)
+  assert.equal(stats.offline, 0)
+  assert.equal(stats.averageMs, 86)
+})
+
 test("分类按数据顺序计数，空分类独立展示，空数据不产生分类", () => {
   assert.deepEqual(categoriesOf(services), [{ value: "影音娱乐", label: "影音娱乐", count: 1 }, { value: "开发工具", label: "开发工具", count: 2 }, { value: "", label: "未分类", count: 1 }])
   assert.deepEqual(categoriesOf([]), [])

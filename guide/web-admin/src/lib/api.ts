@@ -101,7 +101,7 @@ export type Service = {
   checkEnabled?: boolean
   createdAt: number
   updatedAt: number
-  status: "unknown" | "unchecked" | "online" | "offline"
+  status: "unknown" | "unchecked" | "online" | "offline" | "protected"
   responseMs: number | null
   checkedAt: string | null
 }

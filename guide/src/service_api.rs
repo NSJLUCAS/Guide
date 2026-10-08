@@ -315,6 +315,33 @@ mod tests {
             .save_service_check(
                 &target,
                 &CheckResult {
+                    status: "protected",
+                    response_ms: Some(999),
+                    checked_at: now,
+                    http_status: Some(403),
+                    error_kind: Some("cloudflare_challenge"),
+                },
+            )
+            .unwrap();
+        for admin in [false, true] {
+            let response = server.request(reqwest::Method::GET, "/api/services", admin).send().await.unwrap();
+            assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+            let rows: Vec<Value> = response.json().await.unwrap();
+            assert_eq!(rows[0]["status"], "protected");
+            assert!(rows[0]["responseMs"].is_null());
+            assert!(rows[0]["checkedAt"].is_string());
+            for field in
+                ["httpStatus", "http_status", "errorKind", "error_kind", "checkRevision", "check_revision"]
+            {
+                assert!(rows[0].get(field).is_none());
+            }
+        }
+        server
+            .app
+            .db
+            .save_service_check(
+                &target,
+                &CheckResult {
                     status: "online",
                     response_ms: Some(41),
                     checked_at: now - 181,
