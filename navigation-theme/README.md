@@ -47,11 +47,14 @@ npm run build
 | 接口 | 用途 |
 |---|---|
 | `GET /api/services` | 获取可公开访问的网站及其状态 |
+| `GET /api/categories` | 获取分类顺序、空分类及当前可见网站数量 |
 | `GET /api/public-config` | 获取后台保存的卡片样式 `cardStyle` |
 
-网站响应是数组，每项包括 `id`、`name`、`url`、`description`、`category`、`icon`、`status`、`responseMs`、`checkedAt` 和 `checkEnabled`。网站状态支持 `online`、`offline`、`unknown` 和 `unchecked`。无效或过期的检测数据按未知状态显示，HTTPS 图标加载失败时显示本地备用图标。
+网站响应是数组，每项包括 `id`、`name`、`url`、`description`、`category`、`icon`、`status`、`responseMs`、`checkedAt` 和 `checkEnabled`。网站状态支持 `online`、`offline`、`protected`、`unknown` 和 `unchecked`。`protected` 显示“检测受限”，表示 Hub 收到明确的 Cloudflare Challenge 标记，不代表已确认网站可用；受限状态不显示响应时间，普通 403、429、503 不会仅凭状态码认定受限。HTTP 2xx/3xx 保持在线优先，无效或过期的检测数据按未知状态显示，HTTPS 图标加载失败时显示本地备用图标。
 
-网站数据在请求完成后每 30 秒刷新。卡片样式每 5 秒读取，并在窗口获得焦点、恢复可见或收到后台外观保存广播时刷新。公开页面只展示公开数据；管理写入通过 `/admin/` 后台完成，由 Hub 验证登录状态。
+分类响应是按后台顺序排列的数组，每项包括 `id`、`name`、`sort` 和 `count`。分类名称为全局导航信息，空分类也显示；匿名访问的数量只统计公开且启用的网站。管理员在后台“分类”页独立管理分类，服务编辑可选择已有分类；旧 Service API 仍保留 `category` 字符串，新名称自动追加到分类列表。导航始终将“全部”放在首位并默认展示全部网站；只有旧 Hub 缺少分类接口（404）时才从网站推导分类。
+
+网站数据在请求完成后每 30 秒刷新，分类随数据读取并在窗口获得焦点或收到后台分类保存广播时刷新。后台分类更名发生在两次读取之间时，页面最多重读三次，仍不一致则显示可重试错误。卡片样式每 5 秒读取，并在窗口获得焦点、恢复可见或收到后台外观保存广播时刷新。匿名访问仅取得公开且启用的网站；已登录管理员的接口可返回管理数据。管理写入通过 `/admin/` 后台完成，由 Hub 验证登录状态。
 
 后台与公开页共用当前浏览器的浅色/深色偏好。未知页面路径由 Hub 回落到主题的 `dist/index.html`；`/admin/*` 由 Hub 的内置后台处理。
 
