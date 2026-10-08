@@ -218,6 +218,12 @@ CREATE TABLE IF NOT EXISTS service_status (
   http_status INTEGER,
   error_kind TEXT
 );
+
+CREATE TABLE IF NOT EXISTS category (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  sort INTEGER NOT NULL DEFAULT 0
+);
 "#;
 
 /// Schema revision this build expects, stamped into `PRAGMA user_version`.
@@ -234,7 +240,7 @@ CREATE TABLE IF NOT EXISTS service_status (
 /// cannot: `open` runs `SCHEMA` before migrating, and on an older file the
 /// column is not there yet. `an_upgraded_release_matches_a_fresh_database`
 /// holds every migration to these rules, starting from v1.0.0's schema.
-const SCHEMA_VERSION: i64 = 13;
+pub(crate) const SCHEMA_VERSION: i64 = 14;
 
 /// Adds a column older databases lack. A duplicate column indicates the
 /// migration has already run; every other error must propagate.
@@ -446,6 +452,26 @@ fn migrate_to_13(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+/// Import names in their previous first-occurrence order; repeat upgrades must
+/// preserve explicit category ordering and empty categories.
+fn migrate_to_14(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS category (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE,
+        sort INTEGER NOT NULL DEFAULT 0);",
+    )?;
+    let names: Vec<String> = {
+        let mut statement =
+            conn.prepare("SELECT category FROM service WHERE category<>'' ORDER BY sort,id")?;
+        let rows = statement.query_map([], |r| r.get(0))?;
+        rows.collect::<rusqlite::Result<_>>()?
+    };
+    for name in names {
+        crate::category::ensure_category(conn, &name)?;
+    }
+    Ok(())
+}
+
 /// Brings an existing database or backup to the current version. One transaction
 /// covers every migration and the stamp; failures leave the previous state intact.
 fn migrate(conn: &Connection, from: i64) -> Result<()> {
@@ -489,13 +515,16 @@ fn migrate(conn: &Connection, from: i64) -> Result<()> {
     if from < 13 {
         migrate_to_13(&tx)?;
     }
+    if from < 14 {
+        migrate_to_14(&tx)?;
+    }
     tx.execute_batch(&format!("PRAGMA user_version = {SCHEMA_VERSION}"))?;
     tx.commit()?;
     Ok(())
 }
 
 /// Every table this build keeps.
-const TABLES: [&str; 12] = [
+const TABLES: [&str; 13] = [
     "setting",
     "node",
     "traffic",
@@ -508,6 +537,7 @@ const TABLES: [&str; 12] = [
     "ping_hour",
     "service",
     "service_status",
+    "category",
 ];
 
 /// The tables `migrate_to_11` adds. A backup taken before it lacks them and is
@@ -2389,6 +2419,17 @@ impl Db {
                 refuse!("旧备份不含网站配置，恢复会清空现有网站，请使用包含网站配置的新备份");
             }
         }
+        let has_categories: bool = candidate.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='category')",
+            [],
+            |r| r.get(0),
+        )?;
+        if version < 14 && !has_categories {
+            let count: i64 = live.query_row("SELECT COUNT(*) FROM category", [], |r| r.get(0))?;
+            if count > 0 {
+                refuse!("旧备份不含分类管理配置，请使用包含分类配置的新备份，避免丢失现有分类及顺序");
+            }
+        }
         // Older backups can lack tables added by migrations. A v12 backup must
         // already contain service, and v13 must contain its status table;
         // never repair a malformed current backup.
@@ -2396,6 +2437,7 @@ impl Db {
             !HOURLY_TABLES.contains(t)
                 && !(**t == "service" && version < 12)
                 && !(**t == "service_status" && version < 13)
+                && !(**t == "category" && version < 14)
         }) {
             let found: i64 = candidate.query_row(
                 "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",
@@ -2752,7 +2794,10 @@ mod tests {
         for table in ["service", "service_status"] {
             assert_eq!(columns_of(&conn, table).unwrap(), columns_of(&fresh, table).unwrap());
         }
-        assert_eq!(conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(), 13);
+        assert_eq!(
+            conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(),
+            crate::db::SCHEMA_VERSION
+        );
     }
 
     #[test]
@@ -2828,7 +2873,10 @@ mod tests {
         migrate(&conn, 11).unwrap();
         assert_eq!(dump(&conn), before);
         assert_eq!(columns_of(&conn, "service").unwrap().len(), 13);
-        assert_eq!(conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(), 13);
+        assert_eq!(
+            conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(),
+            crate::db::SCHEMA_VERSION
+        );
         let fresh = Connection::open_in_memory().unwrap();
         fresh.execute_batch(SCHEMA).unwrap();
         assert_eq!(columns_of(&conn, "service").unwrap(), columns_of(&fresh, "service").unwrap());
@@ -2936,7 +2984,10 @@ mod tests {
                 settings.get("icon_libraries").map(String::as_str),
                 Some(crate::icon_libraries::INITIAL)
             );
-            assert_eq!(db.conn().query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(), 13);
+            assert_eq!(
+                db.conn().query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(),
+                crate::db::SCHEMA_VERSION
+            );
             settings
         };
         let saved = {
@@ -2984,7 +3035,7 @@ mod tests {
                 assert_eq!(db.get("service_card_style").as_deref(), Some("minimal"));
                 assert_eq!(
                     db.conn().query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(),
-                    13
+                    crate::db::SCHEMA_VERSION
                 );
                 let upgraded = dump(&db.conn());
                 db.conn().execute_batch("PRAGMA user_version = 3").unwrap();
@@ -2995,7 +3046,7 @@ mod tests {
                 assert_eq!(dump(&db.conn()), upgraded, "migration and default seeding are idempotent");
                 assert_eq!(
                     db.conn().query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(),
-                    13
+                    crate::db::SCHEMA_VERSION
                 );
             }
         }
@@ -3018,7 +3069,10 @@ mod tests {
         {
             let db = Db::open(&scratch.0).unwrap();
             assert_eq!(db.get("icon_libraries").as_deref(), Some(r#"{"activeId":"","libraries":[]}"#));
-            assert_eq!(db.conn().query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(), 13);
+            assert_eq!(
+                db.conn().query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(),
+                crate::db::SCHEMA_VERSION
+            );
         }
     }
 
@@ -3029,7 +3083,10 @@ mod tests {
             let db = Db::open(&scratch.0).unwrap();
             let config: serde_json::Value = serde_json::from_str(&db.get("icon_libraries").unwrap()).unwrap();
             assert_eq!(config, serde_json::json!({"activeId": "", "libraries": []}));
-            assert_eq!(db.conn().query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(), 13);
+            assert_eq!(
+                db.conn().query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(),
+                crate::db::SCHEMA_VERSION
+            );
         }
     }
 
@@ -4113,10 +4170,160 @@ mod tests {
         .unwrap();
     }
 
-    /// v1.0.0's schema, opened by this build through the startup path. Fails on
-    /// a column `SCHEMA` gained without a migration or the reverse, on an index
-    /// in `SCHEMA` over a column only a migration adds, and on a migration that
-    /// changes the data when it runs a second time.
+    #[test]
+    fn category_migration_preserves_service_order_checks_and_legacy_names() {
+        use crate::service::{CheckResult, ServiceInput};
+        let scratch = Scratch::new();
+        let before;
+        {
+            let db = Db::open(&scratch.0).unwrap();
+            for (name, category, sort, public) in [
+                ("one", "工具", 80, true),
+                ("two", "影音", -10, false),
+                ("three", "工具", 2, true),
+                ("four", "", 4, true),
+            ] {
+                let mut input: ServiceInput = serde_json::from_value(serde_json::json!({
+                    "name": name, "url": "https://example.com", "category": category,
+                    "sort": sort, "public": public
+                }))
+                .unwrap();
+                input.validate().unwrap();
+                db.create_service(&input).unwrap();
+            }
+            let target = db.service_check_targets().unwrap().remove(0);
+            db.save_service_check(
+                &target,
+                &CheckResult {
+                    status: "protected",
+                    response_ms: None,
+                    checked_at: 1000,
+                    http_status: Some(403),
+                    error_kind: Some("cloudflare_challenge"),
+                },
+            )
+            .unwrap();
+            before = serde_json::to_value(db.service_views(true, 1000).unwrap()).unwrap();
+            db.conn().execute_batch("DROP TABLE IF EXISTS category; PRAGMA user_version=13;").unwrap();
+        }
+        {
+            let db = Db::open(&scratch.0).unwrap();
+            assert_eq!(db.conn().query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(), 14);
+            assert_eq!(serde_json::to_value(db.service_views(true, 1000).unwrap()).unwrap(), before);
+            let categories: Vec<String> = db
+                .conn()
+                .prepare("SELECT name FROM category ORDER BY sort,id")
+                .unwrap()
+                .query_map([], |r| r.get(0))
+                .unwrap()
+                .collect::<rusqlite::Result<_>>()
+                .unwrap();
+            assert_eq!(categories, vec!["影音", "工具"]);
+            db.conn().execute("UPDATE category SET sort=99 WHERE name='影音'", []).unwrap();
+            db.conn().execute("INSERT INTO category(name,sort) VALUES('空分类',100)", []).unwrap();
+            db.conn().execute_batch("PRAGMA user_version=13;").unwrap();
+        }
+        let db = Db::open(&scratch.0).unwrap();
+        let names: Vec<String> = db
+            .conn()
+            .prepare("SELECT name FROM category ORDER BY sort,id")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        assert_eq!(names, vec!["工具", "影音", "空分类"]);
+        assert_eq!(serde_json::to_value(db.service_views(true, 1000).unwrap()).unwrap(), before);
+    }
+
+    #[test]
+    fn category_backups_preserve_empty_order_and_refuse_legacy_metadata_loss() {
+        use crate::service::{CheckResult, ServiceInput};
+        let scratch = Scratch::new();
+        let db = Db::open(&scratch.0).unwrap();
+        let input: ServiceInput = serde_json::from_value(serde_json::json!({
+            "name":"site", "url":"https://example.com", "category":"工具", "sort":42
+        }))
+        .unwrap();
+        db.create_service(&input).unwrap();
+        db.create_category("空分类").unwrap();
+        let ids: Vec<i64> = db.categories(true).unwrap().iter().rev().map(|c| c.id).collect();
+        db.reorder_categories(&ids).unwrap();
+        let target = db.service_check_targets().unwrap().remove(0);
+        db.save_service_check(
+            &target,
+            &CheckResult {
+                status: "protected",
+                response_ms: None,
+                checked_at: 1000,
+                http_status: Some(403),
+                error_kind: Some("cloudflare_challenge"),
+            },
+        )
+        .unwrap();
+        let before = dump(&db.conn());
+        let backup = Scratch::new();
+        db.backup_into(&backup.0).unwrap();
+        db.rename_category(ids[1], "更名").unwrap();
+        db.restore_checked(&backup.0).unwrap();
+        assert_eq!(dump(&db.conn()), before);
+        assert_eq!(db.categories(true).unwrap()[0].name, "空分类");
+        assert_eq!(
+            serde_json::to_value(db.service_views(true, 1000).unwrap()).unwrap()[0]["status"],
+            "protected"
+        );
+
+        let conn = Connection::open(&backup.0).unwrap();
+        conn.execute_batch("DROP TABLE category; PRAGMA user_version=13;").unwrap();
+        drop(conn);
+        assert!(db.restore_checked(&backup.0).unwrap_err().to_string().contains("旧备份不含分类"));
+        assert_eq!(dump(&db.conn()), before);
+        let empty = Db::open(":memory:").unwrap();
+        empty.restore_checked(&backup.0).unwrap();
+        assert_eq!(empty.categories(true).unwrap()[0].name, "工具");
+        assert_eq!(empty.services(true).unwrap()[0].sort, 42);
+        assert_eq!(
+            serde_json::to_value(empty.service_views(true, 1000).unwrap()).unwrap()[0]["status"],
+            "protected"
+        );
+        let malformed = Scratch::new();
+        db.backup_into(&malformed.0).unwrap();
+        let conn = Connection::open(&malformed.0).unwrap();
+        conn.execute_batch("DROP TABLE category;").unwrap();
+        drop(conn);
+        assert!(db.check_backup(&malformed.0).unwrap_err().to_string().contains("缺少 category 表"));
+        assert_eq!(dump(&db.conn()), before);
+    }
+
+    #[test]
+    fn category_migration_failure_rolls_back_rows_and_version() {
+        use crate::service::ServiceInput;
+        let db = Db::open(":memory:").unwrap();
+        for name in ["a", "b"] {
+            let input: ServiceInput = serde_json::from_value(
+                serde_json::json!({"name":name,"url":"https://example.com","category":name}),
+            )
+            .unwrap();
+            db.create_service(&input).unwrap();
+        }
+        let conn = db.conn();
+        conn.execute_batch(
+            "DELETE FROM category; PRAGMA user_version=13;
+            CREATE TRIGGER fail_category BEFORE INSERT ON category WHEN NEW.name='b'
+            BEGIN SELECT RAISE(ABORT,'injected failure'); END;",
+        )
+        .unwrap();
+        let before = dump(&conn);
+        assert!(migrate(&conn, 13).is_err());
+        assert_eq!(dump(&conn), before);
+        assert_eq!(conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(), 13);
+        conn.execute_batch("DROP TRIGGER fail_category;").unwrap();
+        migrate(&conn, 13).unwrap();
+        assert_eq!(conn.query_row("SELECT COUNT(*) FROM category", [], |r| r.get::<_, i64>(0)).unwrap(), 2);
+    }
+
+    /// v1.0.0's schema opened through startup, preserving rows and defaults.
+    /// Repeated upgrades must produce the same schema and data as the first.
     #[test]
     fn an_upgraded_release_matches_a_fresh_database() {
         let scratch = Scratch::new();
@@ -4143,7 +4350,7 @@ mod tests {
             }
             let count: i64 =
                 db.conn().query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0)).unwrap();
-            if HOURLY_TABLES.contains(&table) || matches!(table, "service" | "service_status") {
+            if HOURLY_TABLES.contains(&table) || matches!(table, "service" | "service_status" | "category") {
                 assert_eq!(count, 0, "v1.0 has no {table} rows");
             } else {
                 assert_eq!(count, 1, "v1.0's {table} fixture row survives the upgrade");

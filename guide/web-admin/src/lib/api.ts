@@ -101,7 +101,7 @@ export type Service = {
   checkEnabled?: boolean
   createdAt: number
   updatedAt: number
-  status: "unknown" | "unchecked" | "online" | "offline"
+  status: "unknown" | "unchecked" | "online" | "offline" | "protected"
   responseMs: number | null
   checkedAt: string | null
 }
@@ -117,7 +117,7 @@ export function serviceValues(service: Partial<Service> = {}): ServiceInput {
   }
 }
 
-export function moveService(items: Service[], from: number, delta: -1 | 1): Service[] {
+export function moveService<T>(items: T[], from: number, delta: -1 | 1): T[] {
   const next = [...items]
   const to = from + delta
   if (from < 0 || from >= items.length || to < 0 || to >= items.length) return next

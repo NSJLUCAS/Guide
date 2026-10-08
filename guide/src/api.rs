@@ -2168,7 +2168,7 @@ mod tests {
             assert_eq!(db.get("service_card_style").as_deref(), Some("compact"));
             assert_eq!(
                 db.conn().query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0)).unwrap(),
-                13
+                crate::db::SCHEMA_VERSION
             );
         }
         std::fs::remove_file(path).unwrap();

@@ -6,7 +6,7 @@ import { IconPicker } from "@/components/IconPicker"
 import { WebsiteIcon } from "@/components/WebsiteIcon"
 import { CategoryPicker } from "@/components/CategoryPicker"
 import { ServiceIconPreview } from "@/components/ServiceIconPreview"
-import { categoryOptions, normalizeCategory } from "@/lib/categories"
+import { categoriesChanged, getServiceData, categoryOptions, normalizeCategory } from "@/lib/categories"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -105,6 +105,7 @@ function ServiceForm({ service, categories, onClose, onSave }: {
 
 export function Services() {
   const [services, setServices] = useState<Service[] | null>(null)
+  const [managedCategories, setManagedCategories] = useState<string[] | undefined>(undefined)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
   const [operationError, setOperationError] = useState("")
@@ -120,8 +121,8 @@ export function Services() {
     setLoading(true)
     setLoadError("")
     try {
-      const list = await serviceApi.list(signal)
-      if (current === generation.current && !signal?.aborted) setServices(list)
+      const { services: list, managedCategories: categories } = await getServiceData(signal)
+      if (current === generation.current && !signal?.aborted) { setServices(list); setManagedCategories(categories) }
     } catch (e) {
       if (current === generation.current && !signal?.aborted && (e as Error).name !== "AbortError") setLoadError((e as Error).message)
     } finally {
@@ -148,6 +149,7 @@ export function Services() {
       if (editing?.id === undefined) await serviceApi.create(values)
       else await serviceApi.update(editing.id, values)
       setEditing(null)
+      categoriesChanged()
       toast.success("服务已保存")
       // A failed refresh is a list error, not a failed save: avoid inviting duplicates.
       await load()
@@ -225,7 +227,7 @@ export function Services() {
       ) : !loading && !loadError && services !== null ? (
         <Card className="p-6 text-center text-sm text-muted-foreground"><p>还没有服务</p><p className="mt-1">点击“添加服务”配置第一个网站。</p></Card>
       ) : null}
-      {editing && <ServiceForm service={editing} categories={categoryOptions(services ?? [])} onClose={() => !writing.current && setEditing(null)} onSave={save} />}
+      {editing && <ServiceForm service={editing} categories={categoryOptions(services ?? [], managedCategories)} onClose={() => !writing.current && setEditing(null)} onSave={save} />}
       {deleting && (
         <Dialog open onOpenChange={open => !open && !writing.current && setDeleting(null)}>
           <DialogContent className="sm:max-w-md" showCloseButton={!busy}>

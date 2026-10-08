@@ -90,6 +90,9 @@ impl ServiceInput {
         {
             refuse!("简介最多 2000 个字符，分类最多 100 个字符，图标最多 2048 个字符");
         }
+        if !self.category.is_empty() {
+            self.category = crate::category::category_name(&self.category)?;
+        }
         Ok(())
     }
 }
@@ -121,6 +124,8 @@ pub struct CheckResult {
     pub error_kind: Option<&'static str>,
 }
 
+pub const CLOUDFLARE_CHALLENGE: &str = "cloudflare_challenge";
+
 impl Service {
     pub fn view(self) -> ServiceView {
         let status = if self.check_enabled { "unknown" } else { "unchecked" };
@@ -144,7 +149,7 @@ const SAVE_CHECK: &str =
     ON CONFLICT(service_id) DO UPDATE SET status=excluded.status,response_ms=excluded.response_ms,
         checked_at=excluded.checked_at,http_status=excluded.http_status,error_kind=excluded.error_kind";
 const LIST_VIEWS: &str = "SELECT s.id,s.name,s.url,s.description,s.icon,s.category,s.sort,s.public,s.enabled,
-    s.created_at,s.updated_at,s.check_enabled,st.status,st.response_ms,st.checked_at
+    s.created_at,s.updated_at,s.check_enabled,st.status,st.response_ms,st.checked_at,st.error_kind
     FROM service s LEFT JOIN service_status st ON st.service_id=s.id
     WHERE ?1 OR (s.public=1 AND s.enabled=1) ORDER BY s.sort,s.id";
 
@@ -178,17 +183,24 @@ impl Db {
     /// the result atomically. The HTTP request has already finished outside Db.
     pub fn save_service_check(&self, target: &CheckTarget, result: &CheckResult) -> Result<bool> {
         let response_ms = if result.status == "online" { result.response_ms } else { None };
+        // Keep schema 13's online/offline CHECK and old-reader compatibility.
+        // Only the public view translates this internal diagnostic to protected.
+        let (status, error_kind) = if result.status == "protected" {
+            ("offline", Some(CLOUDFLARE_CHALLENGE))
+        } else {
+            (result.status, result.error_kind)
+        };
         Ok(self.conn().execute(
             SAVE_CHECK,
             params![
                 target.id,
                 target.url,
                 target.revision,
-                result.status,
+                status,
                 response_ms,
                 result.checked_at,
                 result.http_status.map(i64::from),
-                result.error_kind
+                error_kind
             ],
         )? == 1)
     }
@@ -202,6 +214,7 @@ impl Db {
             let status: Option<String> = r.get(12)?;
             let response_ms: Option<i64> = r.get(13)?;
             let checked_at: Option<i64> = r.get(14)?;
+            let error_kind: Option<String> = r.get(15)?;
             let active = service.enabled && service.check_enabled;
             let mut view = service.view();
             if active {
@@ -214,7 +227,13 @@ impl Db {
                             view.status = "online";
                             view.response_ms = response_ms;
                         }
-                        Some("offline") => view.status = "offline",
+                        Some("offline") => {
+                            view.status = if error_kind.as_deref() == Some(CLOUDFLARE_CHALLENGE) {
+                                "protected"
+                            } else {
+                                "offline"
+                            };
+                        }
                         _ => {}
                     }
                 }
@@ -234,6 +253,7 @@ impl Db {
     pub fn create_service(&self, s: &ServiceInput) -> Result<Service> {
         let mut conn = self.conn();
         let tx = conn.transaction()?;
+        crate::category::ensure_category(&tx, &s.category)?;
         tx.execute(
             CREATE_SERVICE,
             params![
@@ -258,7 +278,7 @@ impl Db {
     pub fn update_service(&self, id: i64, s: &ServiceInput) -> Result<Option<Service>> {
         let mut conn = self.conn();
         let tx = conn.transaction()?;
-        tx.execute(
+        let changed = tx.execute(
             UPDATE_SERVICE,
             params![
                 s.name,
@@ -275,6 +295,9 @@ impl Db {
                 id
             ],
         )?;
+        if changed != 0 {
+            crate::category::ensure_category(&tx, &s.category)?;
+        }
         tx.execute("DELETE FROM service_status WHERE service_id=?1", [id])?;
         let service = tx.query_row(GET_SERVICE, [id], row).optional()?;
         tx.commit()?;
@@ -389,6 +412,94 @@ mod tests {
             assert!(view["responseMs"].is_null() && view["checkedAt"].is_null());
             assert!(view.get("checkRevision").is_none() && view.get("check_revision").is_none());
         }
+    }
+
+    #[test]
+    fn protected_checks_survive_reopen_backup_and_restore_with_legacy_rows() {
+        let path = std::env::temp_dir().join(format!("guide-protected-{}.db", crate::auth::random_token()));
+        let backup = path.with_extension("backup.db");
+        {
+            let db = Db::open(path.to_str().unwrap()).unwrap();
+            for status in ["online", "offline", "protected"] {
+                let mut config = input(status);
+                config.public = true;
+                let service = db.create_service(&config).unwrap();
+                let target =
+                    db.service_check_targets().unwrap().into_iter().find(|t| t.id == service.id).unwrap();
+                let mut check = result(status, 1000);
+                if status == "protected" {
+                    check.error_kind = Some("cloudflare_challenge");
+                }
+                assert!(db.save_service_check(&target, &check).unwrap());
+            }
+            db.backup_into(backup.to_str().unwrap()).unwrap();
+        }
+        for restoring in [false, true] {
+            let db = Db::open(path.to_str().unwrap()).unwrap();
+            if restoring {
+                db.restore_from(backup.to_str().unwrap()).unwrap();
+            }
+            let views = serde_json::to_value(db.service_views(false, 1000).unwrap()).unwrap();
+            assert_eq!(views[0]["status"], "online");
+            assert_eq!(views[1]["status"], "offline");
+            assert_eq!(views[2]["status"], "protected");
+            assert!(views[1]["responseMs"].is_null() && views[2]["responseMs"].is_null());
+            assert_eq!(
+                db.conn().query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(),
+                crate::db::SCHEMA_VERSION
+            );
+        }
+        std::fs::remove_file(path).unwrap();
+        std::fs::remove_file(backup).unwrap();
+    }
+
+    #[test]
+    fn protected_checks_preserve_schema_old_states_and_expiry() {
+        let db = Db::open(":memory:").unwrap();
+        let mut config = input("challenge");
+        config.public = true;
+        db.create_service(&config).unwrap();
+        let target = db.service_check_targets().unwrap().remove(0);
+        assert!(db
+            .save_service_check(
+                &target,
+                &CheckResult {
+                    status: "protected",
+                    response_ms: Some(999),
+                    checked_at: 1000,
+                    http_status: Some(403),
+                    error_kind: Some("cloudflare_challenge"),
+                }
+            )
+            .unwrap());
+        let stored: (String, Option<i64>, String) = db
+            .conn()
+            .query_row("SELECT status,response_ms,error_kind FROM service_status", [], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            })
+            .unwrap();
+        assert_eq!(stored, ("offline".into(), None, "cloudflare_challenge".into()));
+        assert_eq!(
+            db.conn().query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(),
+            crate::db::SCHEMA_VERSION
+        );
+        let view = |now| serde_json::to_value(db.service_views(false, now).unwrap()).unwrap();
+        for now in [1000, 1180] {
+            assert_eq!(view(now)[0]["status"], "protected");
+            assert!(view(now)[0]["responseMs"].is_null());
+            assert!(view(now)[0].get("errorKind").is_none());
+        }
+        for now in [999, 1181] {
+            assert_eq!(view(now)[0]["status"], "unknown");
+        }
+        for status in ["offline", "online"] {
+            assert!(db.save_service_check(&target, &result(status, 1200)).unwrap());
+            assert_eq!(view(1200)[0]["status"], status);
+        }
+        config.check_enabled = false;
+        db.update_service(target.id, &config).unwrap();
+        assert_eq!(view(1200)[0]["status"], "unchecked");
+        assert!(!db.save_service_check(&target, &result("protected", 1201)).unwrap());
     }
 
     #[test]
