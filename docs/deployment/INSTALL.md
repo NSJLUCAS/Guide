@@ -1,6 +1,90 @@
 # Guide 安装、持久化与升级
 
-当前正式版本为 **Guide v1.0.0**，已在 [GitHub Releases](https://github.com/NSJLUCAS/Guide/releases/tag/v1.0.0) 发布 Linux x86_64 GNU 二进制。源码仓库为 [NSJLUCAS/Guide](https://github.com/NSJLUCAS/Guide)。以下说明源码构建和正式包部署；没有一键安装或自动更新命令。
+当前已发布正式版本为 **Guide v1.0.0**，Linux x86_64 GNU 二进制见 [GitHub Releases](https://github.com/NSJLUCAS/Guide/releases/tag/v1.0.0)。本分支准备 **v1.1.0，尚未发布**；源码仓库为 [NSJLUCAS/Guide](https://github.com/NSJLUCAS/Guide)。v1.0.0 使用下文手动部署，安装器命令需等 v1.1.0 发布后才可用。
+
+## 官方安装与升级器（v1.1.0，尚未发布）
+
+**以下命令仅在 v1.1.0 正式发布后可用。** v1.0.0 的 tag/资产保持原样，不含安装器或 `sha256sums.txt`。mock/fixture 自动测试与 Debian 上真实 systemd 安装/升级、SQLite 数据保护、失败回滚及面板预览已验收；未来正式 Release 的发布/下载链路和重启恢复仍未验证。在空下载目录中获取并校验安装器，校验失败即停止：
+
+```sh
+curl -fsSL https://github.com/NSJLUCAS/Guide/releases/download/v1.1.0/install-guide.sh -o install-guide.sh &&
+curl -fsSL https://github.com/NSJLUCAS/Guide/releases/download/v1.1.0/sha256sums.txt -o sha256sums.txt &&
+grep -E '^[[:xdigit:]]{64}  install-guide[.]sh$' sha256sums.txt > install-guide.sh.sha256 &&
+sha256sum --check install-guide.sh.sha256 &&
+sudo sh ./install-guide.sh
+```
+
+标准首次安装：`/opt/guide/guide-hub`、`/var/lib/guide/guide.db`、`/etc/systemd/system/guide.service`、`/usr/local/sbin/guide-update`。创建专用 guide 系统用户，调用已有 `--reset-password` 在正确 ownership 的空 DB 中初始化随机应急密码。完成后在终端显示一次；不写入安装器/unit，不存在默认万能密码。密码仍可能留在终端记录中，首次登录立即修改。
+
+```sh
+sudo guide-update
+sudo guide-update --check
+guide-update --help
+```
+
+`--check` 只显示当前版本、latest 正式版本与更新状态；不下载二进制、不 self-update、不写锁或修改服务/DB/安装文件。当前等于 latest 时退出 0；当前更高时保留当前版本并提示禁止自动降级。默认运行会验证并更新保存的 updater，校验失败就退出。更新源始终是 NSJLUCAS/Guide。
+
+要求 root、Linux x86_64 glibc、可运行的 systemd、Python 3.8+、curl、systemd-detect-virt、runuser、useradd、id/getconf/uname/sh；脚本不会自动安装依赖。ARM、Windows、Docker/其他容器、Alpine/musl、OpenRC 暂不支持。下载不可达或 GitHub latest 缺少资产时，现有实例继续运行。
+
+首次安装发现标准路径已有 binary、unit、updater、DB 或孤立的 WAL/SHM 时拒绝初始化。缺少 `guide.service` 时，还会只读检查名为 `guide-hub` 的运行进程和其他已加载服务中的 Guide 命令；发现可识别的旧部署就拒绝安装，不猜测路径。它不能穷举未运行、未加载、改过进程/二进制名称的自定义实例；首次安装前必须由管理员确认没有旧实例，见下文接入说明。
+
+版本通过 GitHub `latest/download/guide-linux-x86_64.tar.gz` 的首次 redirect 获得，不依赖 GitHub API；解析稳定 `vMAJOR.MINOR.PATCH` 后固定 tag 下载，避免一次操作混用两个 Release。优先 `guide-hub --version`；v1.0.0 使用 `--help` 首行兼容，无需先手动升级。
+
+下载顺序为 manifest、归档、独立 `.sha256` 和安装器。两个归档 SHA 来源必须一致，归档和安装器分别校验；只允许现有七个顶层普通文件，拒绝路径穿越、绝对路径、链接、特殊文件、重复成员、额外目录和非 binary 的可执行文件。所有解包在私有临时目录中逐文件复制，再验证 ELF x86_64 和版本；校验完成前不停止服务，不替换 binary/DB/updater。已保存 updater 需要自更新且 Hub 也有新版时，先做相同完整预检，再安全替换并 exec 新 updater。
+
+升级读取 `systemctl cat guide.service`，包含 drop-in 的有效 `ExecStart`；必须是直接执行绝对路径 guide-hub，并明确绝对 `--db` 与 `--listen`。现有 unit、listen、WorkingDirectory、User 和 hardening 不覆盖。不支持 wrapper、相对 DB、变量/specifier、复杂转义或 filesystem namespace 映射；PrivateTmp 的 `/tmp`/`/var/tmp` 和 ProtectHome 隐藏目录中的 binary/DB 路径也拒绝，默认 `/opt` 与 `/var/lib` 路径不受影响。磁盘 unit 未 daemon-reload、真实 DB 不存在或路径不确定时拒绝升级，绝不猜测创建新库。符号链接路径、硬链接 DB，以及与备份控制对象冲突的 DB 名称 `METADATA.json`/`failed-state`/`backups` 也拒绝。
+
+服务停止且 MainPID 为 0 后，完整复制实际 DB 和存在的 `-wal`/`-shm` 到 `<DB目录>/backups/<UTC时间>-<随机ID>/`；旧 binary 放在 `<binary目录>/backups/<UTC时间>-<随机ID>/guide-hub`。备份 root-only，不自动清理旧备份，INFO 记录原版本和 DB 备份位置。成功保留现有配置/迁移结果，updater 不修改 Service、分类、图标库、cardStyle、OAuth 或密码/session 设置。
+
+新版在同目录临时文件完成写入后原子替换，启动后至少等待 6 秒、连续检查 active、MainPID、重启计数和版本；明确 loopback listen 时检查本机 HTTP `/api/public-config`，不以外部代理可达性为成功条件。
+
+升级失败时先停新版并确认停止，移开失败后的 DB/WAL/SHM 到备份下 `failed-state/`（保留供排查），恢复升级前快照与原权限/ownership，恢复旧 binary，再启动并验证旧版。正常升级不会删除数据库。回滚失败明确报 CRITICAL，并给出两份备份位置及服务状态。
+
+SIGINT/SIGTERM 尽力执行事务恢复；SIGKILL、断电或磁盘故障不能保证自动恢复。残留 `/run/lock/guide-update.lock` 时先确认没有 updater 进程，再由管理员处理锁。人工恢复时停止并确认 guide.service 已停止，移开当前失败状态，按 INFO 中的真实 DB 路径恢复整个快照（含原有侧文件，移开快照中没有的失败侧文件），恢复服务用户权限及旧 binary，启动验证；不要只恢复旧 binary 或把运行中的 DB 主文件单独复制。首次安装失败保留受保护的 DB 供恢复，使用 AUTH_RECOVERY 中的 CLI 重置密码，不重新初始化覆盖已有库。
+
+## 从 v1.0.0 首次接入 updater
+
+v1.0.0 没有官方安装器，但**受支持的已有 `guide.service` 不需要预先安装 updater**。重复执行经过校验的 `install-guide.sh` 会升级该实例，并在成功后写入 `/usr/local/sbin/guide-update`。
+
+接入前用 `systemctl cat guide.service` 核对主 unit 和 drop-in，并用 `systemctl show guide.service --property=LoadState --property=NeedDaemonReload --property=ExecStart` 核对已加载配置。应满足：
+
+- 服务名为 `guide.service`；已加载且没有未 reload 的磁盘改动。
+- `ExecStart` 直接执行名称为 `guide-hub` 的绝对二进制路径，明确传入绝对 `--db` 和 `--listen`。兼容明确的 `--site`、`--themes`；不支持额外或重复参数、wrapper、变量/specifier、复杂转义。
+- 原数据库真实存在，路径、普通文件和 ownership 可核实；无符号链接、硬链接或上述 namespace/备份名称冲突。
+- 自定义二进制和数据库路径、监听端口、User、WorkingDirectory、其他 systemd 配置可继续保留；不要求迁移到默认目录。
+
+在 v1.1.0 发布后，已有实例首次接入时在空下载目录执行以下下载、校验和只读检查，**不执行上一节的首次安装代码块**：
+
+```sh
+curl -fsSL https://github.com/NSJLUCAS/Guide/releases/download/v1.1.0/install-guide.sh -o install-guide.sh &&
+curl -fsSL https://github.com/NSJLUCAS/Guide/releases/download/v1.1.0/sha256sums.txt -o sha256sums.txt &&
+grep -E '^[[:xdigit:]]{64}  install-guide[.]sh$' sha256sums.txt > install-guide.sh.sha256 &&
+sha256sum --check install-guide.sh.sha256 &&
+sudo sh ./install-guide.sh --check
+```
+
+应显示 `Current: 1.0.0`，且 latest 为新的正式版。核对已经识别原实例后，再单独执行：
+
+```sh
+sudo sh ./install-guide.sh
+sudo guide-update --check
+```
+
+若输出 `not installed`、报配置/路径错误或没有识别原实例，立即停止，不继续默认安装。升级不会调用密码初始化/重置，也不会新建空库；OAuth、Service、分类、图标库、密码 hash 和会话保留。schema 仍为 13。仍建议先保存独立一致性备份与旧 binary；升级器在停服后再保存自己的 DB/WAL/SHM 快照。
+
+### 无法自动接管的旧部署
+
+其他服务名、手工启动、相对/默认 DB 路径、wrapper、复杂 namespace、容器等不能自动接管。不能为“让检查通过”删除旧数据库、残留 WAL/SHM 或已有安装文件，也不要直接运行安装器创建第二个实例。
+
+管理员可按以下顺序人工处理；本安装器不会执行这些迁移：
+
+1. 记录旧服务/启动命令、真实二进制和 DB 路径、listen、User/Group、WorkingDirectory、环境变量、主题路径、主 unit/drop-in 和代理配置。不要仅凭默认文件名判断数据库。
+2. 在维护窗口停止旧进程/服务并确认退出，备份原 binary、完整 DB 与当时存在的 WAL/SHM、权限/ownership 和配置；备份按敏感文件保护。不对旧 DB 调用 `--reset-password` 或创建新空库。
+3. 若希望接入 updater，人工创建/迁移为受支持的 `guide.service`：保留实际路径和用户配置，把 `ExecStart` 明确为直接执行绝对 `guide-hub --db <原DB绝对路径> --listen <原监听地址>`，保留适用的 site/themes 参数。逐项检查原服务名相关依赖和 drop-in；不覆盖已存在的 `guide.service`。
+4. 停用旧启动入口，避免两个服务访问同一 DB；reload 后先用旧 v1.0.0 binary 和同一个 DB 启动 `guide.service`，核对原账户、OAuth、Service、图标库和面板。只有确认原实例正常且 updater 的只读检查识别它后，才执行上面的升级步骤。
+5. 若部署方式仍不支持 updater，保留原服务管理方式：v1.1.0 发布后下载其四项资产，校验归档 `.sha256` 与 `sha256sums.txt`，在独立暂存目录检查/解开七成员归档；停服和完整备份后，仅替换原 binary，再以原命令、原 DB、原配置启动并验证。失败时停服后恢复原 binary 和完整 DB/WAL/SHM 快照。不要执行 fresh installer。
+
+没有通用的自动迁移命令；无法确认真实 DB 或 namespace 对应宿主机路径时应先解决路径问题，不能猜测。即使安装器没有发现进程或已加载服务，也不能据此断言机器上没有未运行的自定义旧部署。
 
 ## 构建或解包
 

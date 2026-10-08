@@ -9,7 +9,23 @@ concurrency:
   group: guide-release-${{ github.ref }}
   cancel-in-progress: false
 jobs:
+  security:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install workflow parser
+        run: python3 -m pip install 'PyYAML==6.0.3'
+      - name: ShellCheck, workflow validation and both Gitleaks scans
+        run: bash scripts/check-security.sh
   verify-and-package:
+    needs: security
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     defaults:
@@ -81,6 +97,12 @@ jobs:
           npm run build
       - name: Rust formatting
         run: cargo fmt --all --check
+      - name: Installer and Release verifier regression tests
+        working-directory: .
+        run: |
+          sh -n install-guide.sh
+          python3 -m unittest discover -s tests/updater -v
+          python3 -m unittest discover -s tests/release -v
       - name: Full Rust tests including Auth and migrations
         run: cargo test --locked
       - name: Build Linux x86_64
@@ -88,6 +110,7 @@ jobs:
       - name: Verify embedded assets and assemble a clean archive
         working-directory: .
         run: |
+          set -euo pipefail
           test -s guide/web-admin/dist/index.html
           test -s navigation-theme/dist/index.html
           test -s guide/target/theme/theme.json
@@ -107,14 +130,21 @@ jobs:
             guide-hub LICENSE THIRD_PARTY_NOTICES.md THIRD_PARTY_LICENSES.md INSTALL.md AUTH_RECOVERY.md guide.service
           cd release-artifacts
           sha256sum guide-linux-x86_64.tar.gz > guide-linux-x86_64.tar.gz.sha256
+          install -m 0755 ../install-guide.sh install-guide.sh
+          sha256sum guide-linux-x86_64.tar.gz install-guide.sh > sha256sums.txt
           sha256sum --check guide-linux-x86_64.tar.gz.sha256
+          sha256sum --check sha256sums.txt
           tar -tzf guide-linux-x86_64.tar.gz
+          rm -r package
+          python3 ../scripts/verify-release.py . --version "${GITHUB_REF_NAME#v}"
       - uses: actions/upload-artifact@v7
         with:
           name: guide-linux-x86_64
           path: |
             release-artifacts/guide-linux-x86_64.tar.gz
             release-artifacts/guide-linux-x86_64.tar.gz.sha256
+            release-artifacts/install-guide.sh
+            release-artifacts/sha256sums.txt
           if-no-files-found: error
           retention-days: 14
   publish:
@@ -124,6 +154,12 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
       - uses: actions/download-artifact@v8
         with:
           name: guide-linux-x86_64
@@ -137,7 +173,10 @@ jobs:
         run: |
           set -euo pipefail
           sha256sum --check guide-linux-x86_64.tar.gz.sha256
+          sha256sum --check sha256sums.txt
+          sh -n install-guide.sh
+          python3 ../scripts/verify-release.py . --version "${RELEASE_TAG#v}"
           args=(--verify-tag --generate-notes)
           if [[ "$RELEASE_TAG" == *-* ]]; then args+=(--prerelease); fi
           gh release create "$RELEASE_TAG" guide-linux-x86_64.tar.gz \
-            guide-linux-x86_64.tar.gz.sha256 "${args[@]}"
+            guide-linux-x86_64.tar.gz.sha256 install-guide.sh sha256sums.txt "${args[@]}"

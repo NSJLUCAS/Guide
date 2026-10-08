@@ -11,6 +11,21 @@ concurrency:
   group: guide-ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  security:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install workflow parser
+        run: python3 -m pip install 'PyYAML==6.0.3'
+      - name: ShellCheck, workflow validation and both Gitleaks scans
+        run: bash scripts/check-security.sh
   check:
     runs-on: ubuntu-22.04
     timeout-minutes: 45
@@ -29,6 +44,15 @@ jobs:
           cache-dependency-path: |
             guide/web-admin/package-lock.json
             navigation-theme/package-lock.json
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Installer and Release verifier regression tests
+        working-directory: .
+        run: |
+          sh -n install-guide.sh
+          python3 -m unittest discover -s tests/updater -v
+          python3 -m unittest discover -s tests/release -v
       - uses: dtolnay/rust-toolchain@1.99.0
         with:
           components: rustfmt
