@@ -3,6 +3,7 @@ import { Moon, Search, Sun, Wrench, X } from "lucide-react"
 
 import { CategoryDrawer } from "@/components/CategoryDrawer"
 import { ServiceCard } from "@/components/ServiceCard"
+import { SearchingFooter } from "@/components/SearchingFooter"
 import { ServiceSummary } from "@/components/ServiceSummary"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -177,6 +178,7 @@ export function NavigationPage({ services, managedCategories, loading = false, e
           </div>
         ) : current === null ? cards : <CategoryDrawer openKey={current}>{cards}</CategoryDrawer>}
       </main>
+      <SearchingFooter />
     </div>
   )
 }

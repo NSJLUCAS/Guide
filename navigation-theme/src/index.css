@@ -46,6 +46,8 @@
      perceives. */
   --online: oklch(0.6 0.16 150);
   --offline: oklch(0.52 0 0);
+  /* The footer flashlight: the one warm colour on the page, kept faint. */
+  --beam: oklch(0.85 0.14 85);
 }
 
 /* `color-scheme` draws the browser's own controls -- the checkbox,
@@ -82,6 +84,7 @@
      the green. */
   --online: oklch(0.72 0.17 150);
   --offline: oklch(0.55 0 0);
+  --beam: oklch(0.9 0.13 92 / 55%);
 }
 
 @theme inline {
@@ -128,3 +131,46 @@
 
 /* Tabular figures keep live numbers from shifting as they update. */
 .tnum { font-variant-numeric: tabular-nums; }
+
+/* The flashlight walker at the foot of the page (SearchingFooter). One trip
+   there and back is 28 s; he turns at each end. */
+.searching-walker { left: -80px; animation: searching-walk 28s linear infinite; }
+.searching-turn { animation: searching-turn 28s step-end infinite; }
+.searching-footer svg * { transform-box: view-box; }
+.searching-bob { animation: searching-bob 0.45s ease-in-out infinite alternate; }
+.searching-leg-a, .searching-leg-b { transform-origin: 0 62px; animation: searching-swing 0.9s ease-in-out infinite alternate; }
+.searching-leg-b { animation-direction: alternate-reverse; }
+.searching-arm-back { transform-origin: 0 40px; animation: searching-swing 0.9s ease-in-out infinite alternate-reverse; }
+.searching-sweep { transform-origin: 0 40px; animation: searching-sweep 3.2s ease-in-out infinite alternate; }
+.searching-beam { animation: searching-flicker 7s linear infinite; }
+.searching-ask { opacity: 0; animation: searching-ask 14s ease-out infinite; }
+
+@keyframes searching-walk {
+  50% { left: calc(100% - 160px); }
+}
+@keyframes searching-turn {
+  0% { transform: none; }
+  50% { transform: scaleX(-1); }
+}
+@keyframes searching-bob { to { transform: translateY(-1.5px); } }
+@keyframes searching-swing {
+  from { transform: rotate(-18deg); }
+  to { transform: rotate(18deg); }
+}
+@keyframes searching-sweep {
+  from { transform: rotate(-10deg); }
+  to { transform: rotate(14deg); }
+}
+@keyframes searching-flicker {
+  0%, 61%, 63%, 65%, 100% { opacity: 1; }
+  62%, 64% { opacity: 0.55; }
+}
+@keyframes searching-ask {
+  0%, 36%, 54%, 100% { opacity: 0; transform: translateY(4px); }
+  40%, 50% { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .searching-footer * { animation: none !important; }
+  .searching-walker { left: calc(50% - 120px); }
+}
