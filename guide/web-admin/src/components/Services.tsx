@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react"
-import { ArrowDown, ArrowUp, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react"
+import { ArrowDown, ArrowUp, Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
+import { DragGrip, dragRowClass, useRowDrag, type DropPlace } from "@/components/RowDrag"
 import { IconPicker } from "@/components/IconPicker"
 import { WebsiteIcon } from "@/components/WebsiteIcon"
 import { CategoryPicker } from "@/components/CategoryPicker"
 import { ServiceIconPreview } from "@/components/ServiceIconPreview"
 import { categoriesChanged, getServiceData, categoryOptions, normalizeCategory } from "@/lib/categories"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -16,7 +16,8 @@ import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { moveService, serviceApi, serviceValues, type Service, type ServiceInput } from "@/lib/api"
+import { dropService, serviceApi, serviceValues, type Service, type ServiceInput } from "@/lib/api"
+import { filterAdminServices, serviceHost, serviceTabs } from "@/lib/service-list"
 import { validateIconInput } from "@/lib/icons"
 
 function ServiceForm({ service, categories, onClose, onSave }: {
@@ -59,7 +60,7 @@ function ServiceForm({ service, categories, onClose, onSave }: {
       <DialogContent showCloseButton={!saving}>
         <DialogHeader>
           <DialogTitle>{service.id === undefined ? "添加服务" : "编辑服务"}</DialogTitle>
-          <DialogDescription>配置导航网站；排序在列表中通过上移、下移调整。</DialogDescription>
+          <DialogDescription>配置导航网站；排序在列表中拖动手柄或上移、下移调整。</DialogDescription>
         </DialogHeader>
         <form onSubmit={save} className="space-y-4">
           <fieldset disabled={saving} className="space-y-4">
@@ -139,6 +140,12 @@ export function Services() {
 
   // No writes from a stale list after a failed read, or while another write is in flight.
   const locked = loading || !!busy || !!loadError
+  const [filter, setFilter] = useState<string | null>(null)
+  const [query, setQuery] = useState("")
+  const tabs = serviceTabs(services ?? [], managedCategories)
+  const current = filter === null || tabs.some(tab => tab.value === filter) ? filter : null
+  const visible = filterAdminServices(services ?? [], current, query)
+  const drag = useRowDrag((dragged, target, place) => void reorder(dragged, target, place), locked)
 
   async function save(values: ServiceInput) {
     if (writing.current) return
@@ -170,13 +177,17 @@ export function Services() {
     finally { writing.current = false; setBusy("") }
   }
 
-  async function move(index: number, delta: -1 | 1) {
+  async function reorder(dragged: number, target: number, place: DropPlace) {
     if (!services || locked || writing.current) return
+    const next = dropService(services, dragged, target, place)
+    if (next.every((service, i) => service.id === services[i].id)) return
     writing.current = true
     setBusy("order")
     setOperationError("")
+    // Shown at once; the reload below puts the server's order back if the write is refused.
+    setServices(next)
     try {
-      await serviceApi.order(moveService(services, index, delta).map(service => service.id))
+      await serviceApi.order(next.map(service => service.id))
       toast.success("排序已保存")
     } catch (e) { setOperationError(`排序失败：${(e as Error).message}`) }
     finally {
@@ -203,27 +214,59 @@ export function Services() {
       {loading && <div role="status" className="space-y-2"><p className="text-sm text-muted-foreground">加载服务中…</p>{services === null && <Skeleton className="h-32" />}</div>}
       {busy === "order" && <p role="status" className="text-sm text-muted-foreground">正在保存排序…</p>}
       {services?.length ? (
-        <Card className="overflow-hidden p-0">
-          <Table aria-label="服务列表">
-            <TableHeader><TableRow><TableHead>网站</TableHead><TableHead>分类</TableHead><TableHead>可见性</TableHead><TableHead>启用</TableHead><TableHead>排序</TableHead><TableHead className="text-right">操作</TableHead></TableRow></TableHeader>
-            <TableBody>
-              {services.map((service, index) => (
-                <TableRow key={service.id} data-service-id={service.id}>
-                  <TableCell className="min-w-48 max-w-72 whitespace-normal">
-                    <div className="flex items-center gap-2"><ServiceIconPreview icon={service.icon} /><span className="break-all font-medium">{service.name}</span></div>
-                    <p className="break-all text-xs text-muted-foreground">{service.url}</p>
-                    {service.description && <p className="mt-1 break-all text-xs text-muted-foreground">{service.description}</p>}
-                  </TableCell>
-                  <TableCell className="max-w-40 break-all whitespace-normal">{service.category || "未分类"}</TableCell>
-                  <TableCell><Badge variant={service.public ? "secondary" : "outline"}>{service.public ? "公开" : "私有"}</Badge></TableCell>
-                  <TableCell><Badge variant={service.enabled ? "secondary" : "outline"}>{service.enabled ? "启用" : "停用"}</Badge></TableCell>
-                  <TableCell><div className="flex items-center gap-1"><span className="w-5 text-center text-xs text-muted-foreground">{index + 1}</span><Button size="icon" variant="ghost" aria-label={`上移 ${service.name}`} disabled={locked || index === 0} onClick={() => void move(index, -1)}><ArrowUp /></Button><Button size="icon" variant="ghost" aria-label={`下移 ${service.name}`} disabled={locked || index === services.length - 1} onClick={() => void move(index, 1)}><ArrowDown /></Button></div></TableCell>
-                  <TableCell><div className="flex justify-end gap-1"><Button size="icon" variant="ghost" aria-label={`编辑 ${service.name}`} disabled={locked} onClick={() => setEditing(service)}><Pencil /></Button><Button size="icon" variant="ghost" aria-label={`删除 ${service.name}`} disabled={locked} onClick={() => { setDeleteError(""); setDeleting(service) }}><Trash2 /></Button></div></TableCell>
-                </TableRow>
+        <>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div role="group" aria-label="服务分类" className="-mx-1 flex min-w-0 flex-1 gap-1 overflow-x-auto px-1 pb-1">
+              {[{ value: null, label: "全部", count: services.length }, ...tabs].map(({ value, label, count }) => (
+                <Button key={value === null ? "*" : `=${value}`} size="sm" variant={current === value ? "secondary" : "ghost"} aria-pressed={current === value}
+                  className="shrink-0" onClick={() => setFilter(value)}>
+                  {label}<span className="tnum text-muted-foreground">{count}</span>
+                </Button>
               ))}
-            </TableBody>
-          </Table>
-        </Card>
+            </div>
+            <div role="search" className="relative w-full shrink-0 sm:w-56">
+              <Search aria-hidden className="pointer-events-none absolute left-2.5 top-2 size-4 text-muted-foreground" />
+              <Input type="search" aria-label="搜索服务" placeholder="搜索名称、地址或简介" value={query} onChange={e => setQuery(e.target.value)} className="h-8 pl-8" />
+            </div>
+          </div>
+          <Card className="overflow-hidden p-0">
+            <Table aria-label="服务列表">
+              <TableHeader><TableRow><TableHead className="w-8"><span className="sr-only">拖动</span></TableHead><TableHead>网站</TableHead><TableHead>分类</TableHead><TableHead>状态</TableHead><TableHead className="text-right">操作</TableHead></TableRow></TableHeader>
+              <TableBody>
+                {visible.map((service, index) => (
+                  <TableRow key={service.id} data-service-id={service.id} {...drag.row(service.id)} className={`${dragRowClass} [&>td]:py-1`}>
+                    <TableCell className="w-8 pr-0"><DragGrip label={`拖动排序 ${service.name}`} disabled={locked} {...drag.grip(service.id)} /></TableCell>
+                    <TableCell className="w-full max-w-0" title={service.description ? `${service.url}\n${service.description}` : service.url}>
+                      <div className="flex min-w-0 items-center gap-2">
+                        <ServiceIconPreview icon={service.icon} />
+                        <span className="truncate font-medium">{service.name}</span>
+                        <span className="hidden truncate text-xs text-muted-foreground md:inline">{serviceHost(service.url)}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="max-w-40 truncate text-muted-foreground" title={service.category || "未分类"}>{service.category || "未分类"}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      <span className={service.public ? undefined : "font-medium text-foreground"}>{service.public ? "公开" : "私有"}</span>
+                      {" · "}
+                      <span className={service.enabled ? undefined : "font-medium text-foreground"}>{service.enabled ? "启用" : "停用"}</span>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex justify-end">
+                        <Button size="icon-sm" variant="ghost" className="text-muted-foreground" aria-label={`上移 ${service.name}`} disabled={locked || index === 0} onClick={() => void reorder(service.id, visible[index - 1].id, "before")}><ArrowUp /></Button>
+                        <Button size="icon-sm" variant="ghost" className="text-muted-foreground" aria-label={`下移 ${service.name}`} disabled={locked || index === visible.length - 1} onClick={() => void reorder(service.id, visible[index + 1].id, "after")}><ArrowDown /></Button>
+                        <Button size="icon-sm" variant="ghost" aria-label={`编辑 ${service.name}`} disabled={locked} onClick={() => setEditing(service)}><Pencil /></Button>
+                        <Button size="icon-sm" variant="ghost" aria-label={`删除 ${service.name}`} disabled={locked} onClick={() => { setDeleteError(""); setDeleting(service) }}><Trash2 /></Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {visible.length === 0 && (
+                  <TableRow><TableCell colSpan={5} className="py-6 text-center text-sm text-muted-foreground">没有匹配的服务</TableCell></TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </Card>
+          <p className="text-xs text-muted-foreground">拖动左侧手柄调整顺序，松手即保存；鼠标停在网站上可查看完整地址和简介。</p>
+        </>
       ) : !loading && !loadError && services !== null ? (
         <Card className="p-6 text-center text-sm text-muted-foreground"><p>还没有服务</p><p className="mt-1">点击“添加服务”配置第一个网站。</p></Card>
       ) : null}

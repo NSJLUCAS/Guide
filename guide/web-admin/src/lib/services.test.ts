@@ -1,6 +1,7 @@
 /// <reference types="node" />
 import assert from "node:assert/strict"
-import { serviceApi, serviceValues, moveService, type Service } from "./api.ts"
+import { serviceApi, serviceValues, moveService, dropService, type Service } from "./api.ts"
+import { filterAdminServices, serviceHost, serviceTabs } from "./service-list.ts"
 
 const service: Service = {
   id: 1, name: "Emby", url: "https://example.com/", description: "影音", icon: "emby",
@@ -21,6 +22,36 @@ assert.deepEqual(moveService(items, 1, -1).map(s => s.id), [2, 1, 3])
 assert.deepEqual(moveService(items, 1, 1).map(s => s.id), [1, 3, 2])
 assert.deepEqual(moveService(items, 0, -1).map(s => s.id), [1, 2, 3])
 assert.deepEqual(items.map(s => s.id), [1, 2, 3], "source order must not mutate")
+const five = [1, 2, 3, 4, 5].map(id => ({ id }))
+const ids = (list: { id: number }[]) => list.map(s => s.id)
+assert.deepEqual(ids(dropService(five, 1, 4, "after")), [2, 3, 4, 1, 5])
+assert.deepEqual(ids(dropService(five, 5, 2, "before")), [1, 5, 2, 3, 4])
+assert.deepEqual(ids(dropService(five, 3, 3, "before")), [1, 2, 3, 4, 5], "dropping on itself changes nothing")
+assert.deepEqual(ids(dropService(five, 9, 2, "before")), [1, 2, 3, 4, 5], "an unknown row changes nothing")
+// A filtered view drops relative to a visible row; the hidden rows keep their places.
+assert.deepEqual(ids(dropService(five, 4, 2, "before")), [1, 4, 2, 3, 5])
+assert.deepEqual(ids(five), [1, 2, 3, 4, 5], "source order must not mutate")
+
+const listed = [
+  { ...service, id: 1, name: "Emby", category: "影音", url: "https://emby.example.com/web", description: "家庭影院" },
+  { ...service, id: 2, name: "Gitea", category: "开发", url: "https://git.example.com/", description: "" },
+  { ...service, id: 3, name: "Notes", category: "", url: "https://notes.example.com/", description: "随手记" },
+  { ...service, id: 4, name: "Jellyfin", category: "影音", url: "https://jf.example.com/", description: "" },
+]
+// Managed order first, empty managed categories left out, uncategorized last.
+assert.deepEqual(serviceTabs(listed, ["开发", "空分类", "影音"]), [
+  { value: "开发", label: "开发", count: 1 }, { value: "影音", label: "影音", count: 2 }, { value: "", label: "未分类", count: 1 },
+])
+// An older hub without managed categories orders them by first use.
+assert.deepEqual(serviceTabs(listed).map(tab => tab.value), ["影音", "开发", ""])
+assert.deepEqual(ids(filterAdminServices(listed, "影音", "")), [1, 4])
+assert.deepEqual(ids(filterAdminServices(listed, "", "")), [3])
+assert.deepEqual(ids(filterAdminServices(listed, null, " EMBY ")), [1])
+assert.deepEqual(ids(filterAdminServices(listed, null, "git.example")), [2], "matches the address")
+assert.deepEqual(ids(filterAdminServices(listed, null, "随手")), [3], "matches the description")
+assert.deepEqual(ids(filterAdminServices(listed, "开发", "emby")), [])
+assert.equal(serviceHost("https://emby.example.com:8096/web"), "emby.example.com:8096")
+assert.equal(serviceHost("not a url"), "not a url")
 
 const calls: { url: string; method: string; body: unknown }[] = []
 const originalFetch = globalThis.fetch

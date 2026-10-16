@@ -125,6 +125,19 @@ export function moveService<T>(items: T[], from: number, delta: -1 | 1): T[] {
   return next
 }
 
+/**
+ * The whole list with one row dragged before or after another. Positions are by
+ * ID, not index, so a drop in a filtered view lands next to the row it was
+ * dropped on while every row the filter hides keeps its place.
+ */
+export function dropService<T extends { id: number }>(items: T[], dragged: number, target: number, place: "before" | "after"): T[] {
+  const moving = items.find(item => item.id === dragged)
+  if (!moving || dragged === target || !items.some(item => item.id === target)) return [...items]
+  const next = items.filter(item => item.id !== dragged)
+  next.splice(next.findIndex(item => item.id === target) + (place === "after" ? 1 : 0), 0, moving)
+  return next
+}
+
 /** Uses the same JSON/error/session request path as every existing admin page. */
 export const serviceApi = {
   list: (signal?: AbortSignal) => api<Service[]>("/services", { signal }),
