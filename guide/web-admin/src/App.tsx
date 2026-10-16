@@ -3,6 +3,7 @@ import { ExternalLink, LogOut, Moon, Sun } from "lucide-react"
 import { Toaster } from "sonner"
 
 import { Admin } from "@/components/Admin"
+import { GuideMark } from "@/components/GuideMark"
 import { Login } from "@/components/Login"
 import { Button } from "@/components/ui/button"
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -138,7 +139,8 @@ export default function App() {
           <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3">
             {/* The site name is the way back to the status page, as in the
                 theme's own header. */}
-            <a href="/" className="font-semibold transition-opacity hover:opacity-70">
+            <a href="/" className="flex items-center gap-2 font-semibold transition-opacity hover:opacity-70">
+              <GuideMark className="size-5" />
               {me.site_name || "Guide"}
             </a>
             <span className="text-xs text-muted-foreground">后台</span>

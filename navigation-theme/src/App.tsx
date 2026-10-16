@@ -2,6 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from "react"
 import { Moon, Search, Sun, Wrench, X } from "lucide-react"
 
 import { CategoryDrawer } from "@/components/CategoryDrawer"
+import { GuideMark } from "@/components/GuideMark"
 import { ServiceCard } from "@/components/ServiceCard"
 import { SearchingFooter } from "@/components/SearchingFooter"
 import { ServiceSummary } from "@/components/ServiceSummary"
@@ -128,7 +129,7 @@ export function NavigationPage({ services, managedCategories, loading = false, e
     <div className="min-h-svh">
       <header className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur">
         <div className="mx-auto flex max-w-[1400px] items-center gap-3 px-4 py-3 sm:px-6">
-          <h1><button className="font-semibold transition-opacity hover:opacity-70" onClick={reset}>Guide</button></h1>
+          <h1><button className="flex items-center gap-2 font-semibold transition-opacity hover:opacity-70" onClick={reset}><GuideMark className="size-5" />Guide</button></h1>
           <span className="text-xs text-muted-foreground">网站服务</span>
           <div className="flex-1" />
           <Button variant="ghost" size="sm" asChild>
