@@ -193,6 +193,11 @@ async function main() {
     await page.getByRole('button', { name: '清除搜索' }).click()
     await page.getByRole('group', { name: '网站分类' }).getByRole('button', { name: '开发工具' }).click()
     assert.equal(await cards().count(), 6)
+    // A category opens in its drawer with its cards already counted; "全部" has none.
+    assert.equal(await page.locator('[data-category-drawer="开发工具"] [data-service-id]').count(), 6)
+    await page.getByRole('group', { name: '网站分类' }).getByRole('button', { name: '全部' }).click()
+    assert.equal(await page.locator('[data-category-drawer]').count(), 0)
+    assert.equal(await cards().count(), 12)
     assert.deepEqual([...new Set(apiPaths)].sort(), ['/api/public-config', '/api/services'])
     assert.deepEqual(errors, [])
     console.log(`public navigation fixture passed: ${JSON.stringify({ heights, configCalls, serviceCalls, maxActive, apiPaths: [...new Set(apiPaths)], output })}`)

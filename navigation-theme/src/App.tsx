@@ -1,6 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react"
 import { Moon, Search, Sun, Wrench, X } from "lucide-react"
 
+import { CategoryDrawer } from "@/components/CategoryDrawer"
 import { ServiceCard } from "@/components/ServiceCard"
 import { ServiceSummary } from "@/components/ServiceSummary"
 import { Button } from "@/components/ui/button"
@@ -117,6 +118,11 @@ export function NavigationPage({ services, managedCategories, loading = false, e
   if (current !== category) setCategory(current)
 
   const reset = () => { setCategory(null); setQuery("") }
+  const cards = (
+    <div className={cardGridClass(cardStyle)} aria-label="网站列表">
+      {shown.map(service => <ServiceCard key={service.id} service={service} now={now} cardStyle={cardStyle} />)}
+    </div>
+  )
   return (
     <div className="min-h-svh">
       <header className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur">
@@ -169,11 +175,7 @@ export function NavigationPage({ services, managedCategories, loading = false, e
             <p>{services.length === 0 ? "还没有网站" : "没有匹配的网站"}</p>
             {services.length > 0 && <Button variant="ghost" size="sm" className="mt-2" onClick={reset}>清除筛选</Button>}
           </div>
-        ) : (
-          <div className={cardGridClass(cardStyle)} aria-label="网站列表">
-            {shown.map(service => <ServiceCard key={service.id} service={service} now={now} cardStyle={cardStyle} />)}
-          </div>
-        )}
+        ) : current === null ? cards : <CategoryDrawer openKey={current}>{cards}</CategoryDrawer>}
       </main>
     </div>
   )
