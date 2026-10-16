@@ -1206,6 +1206,7 @@ const READABLE_SETTINGS: &[&str] = &[
     "update_notice",
     "icon_libraries",
     "service_card_style",
+    "footer_walker",
 ];
 
 // ---- the database itself ----
@@ -1966,9 +1967,19 @@ fn card_style(app: &App) -> String {
         .unwrap_or_else(|| "standard".into())
 }
 
-/// The anonymous appearance endpoint exposes exactly one non-sensitive value.
+/// The flashlight walker at the foot of the public page. On unless switched
+/// off, so a hub that never saw this setting keeps showing him.
+fn footer_walker(app: &App) -> bool {
+    app.db.get("footer_walker").as_deref() != Some("off")
+}
+
+/// The anonymous appearance endpoint exposes only non-sensitive display values.
 pub async fn public_config(State(app): State<Shared>) -> Response {
-    ([(header::CACHE_CONTROL, "no-store")], Json(json!({"cardStyle": card_style(&app)}))).into_response()
+    (
+        [(header::CACHE_CONTROL, "no-store")],
+        Json(json!({"cardStyle": card_style(&app), "footerWalker": footer_walker(&app)})),
+    )
+        .into_response()
 }
 
 pub async fn settings(_: Admin, State(app): State<Shared>) -> Json<Value> {
@@ -1977,6 +1988,7 @@ pub async fn settings(_: Admin, State(app): State<Shared>) -> Json<Value> {
         out.insert((*key).to_owned(), json!(app.db.get(key).unwrap_or_default()));
     }
     out.insert("service_card_style".into(), json!(card_style(&app)));
+    out.insert("footer_walker".into(), json!(if footer_walker(&app) { "on" } else { "off" }));
     // Read-only branding: preserve the stored value and custom site names.
     out.insert("site_name".into(), json!(crate::brand::site_name(app.db.get("site_name"))));
     // A restored older backup can lack this setting until the next open.
@@ -2022,6 +2034,7 @@ fn setting_error(app: &App, key: &str, value: &Value) -> Option<String> {
         "service_card_style" if !matches!(value, "standard" | "compact" | "minimal") => {
             Some("卡片样式必须是 standard、compact 或 minimal".into())
         }
+        "footer_walker" if !matches!(value, "on" | "off") => Some("页脚动画开关必须是 on 或 off".into()),
         "icon_libraries" => crate::icon_libraries::validate(value).err(),
         "theme" if !crate::frontend::selectable(app, value) => Some("主题没有安装".into()),
         // Housekeeping clamps whatever it reads, so an unparsable value would be
@@ -2125,7 +2138,7 @@ mod tests {
             assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
             let bytes = axum::body::to_bytes(response.into_body(), 1024).await.unwrap();
             let value: Value = serde_json::from_slice(&bytes).unwrap();
-            assert_eq!(value, json!({"cardStyle": style}));
+            assert_eq!(value, json!({"cardStyle": style, "footerWalker": true}));
         }
         app.db.set("site_name", "Unchanged").unwrap();
         for style in [json!("huge"), json!(" compact "), json!(null), json!(1)] {
@@ -2151,7 +2164,46 @@ mod tests {
             }
             let response = public_config(State(app.clone())).await;
             let bytes = axum::body::to_bytes(response.into_body(), 1024).await.unwrap();
-            assert_eq!(serde_json::from_slice::<Value>(&bytes).unwrap(), json!({"cardStyle":"standard"}));
+            assert_eq!(
+                serde_json::from_slice::<Value>(&bytes).unwrap(),
+                json!({"cardStyle":"standard", "footerWalker": true})
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn footer_walker_defaults_on_and_only_accepts_on_or_off() {
+        let app = std::sync::Arc::new(app());
+        let public = |app: Shared| async move {
+            let bytes =
+                axum::body::to_bytes(public_config(State(app)).await.into_body(), 1024).await.unwrap();
+            serde_json::from_slice::<Value>(&bytes).unwrap()["footerWalker"].clone()
+        };
+        let read = |app: Shared| async move { settings(Admin, State(app)).await.0["footer_walker"].clone() };
+        assert_eq!(public(app.clone()).await, json!(true));
+        assert_eq!(read(app.clone()).await, json!("on"));
+        for (value, shown) in [("off", false), ("on", true)] {
+            let response = save_settings(
+                Admin,
+                State(app.clone()),
+                HeaderMap::new(),
+                Json(json!({"footer_walker": value})),
+            )
+            .await;
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(public(app.clone()).await, json!(shown));
+            assert_eq!(read(app.clone()).await, json!(value));
+        }
+        for bad in [json!("yes"), json!(false), json!("")] {
+            let response = save_settings(
+                Admin,
+                State(app.clone()),
+                HeaderMap::new(),
+                Json(json!({"footer_walker": bad})),
+            )
+            .await;
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+            assert_eq!(app.db.get("footer_walker").as_deref(), Some("on"));
         }
     }
 

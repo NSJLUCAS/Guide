@@ -1,9 +1,13 @@
 import { useEffect, useState } from "react"
-import type { CardStyle } from "./card-style.ts"
-import { getPublicCardStyle } from "./public-config.ts"
+import { getPublicAppearance, type Appearance } from "./public-config.ts"
 
-export function useCardStyle(): CardStyle {
-  const [style, setStyle] = useState<CardStyle>("standard")
+/**
+ * The hub's public appearance settings. The walker starts hidden until the hub
+ * answers, so a visitor never sees him appear and vanish on a hub that has
+ * switched him off.
+ */
+export function useAppearance(): Appearance {
+  const [appearance, setAppearance] = useState<Appearance>({ cardStyle: "standard", footerWalker: false })
   useEffect(() => {
     const controller = new AbortController()
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -14,10 +18,10 @@ export function useCardStyle(): CardStyle {
       if (loading) { queued = true; return }
       clearTimeout(timer)
       loading = true
-      const next = await getPublicCardStyle(controller.signal)
+      const next = await getPublicAppearance(controller.signal)
       loading = false
       if (controller.signal.aborted) return
-      setStyle(next)
+      setAppearance(previous => previous.cardStyle === next.cardStyle && previous.footerWalker === next.footerWalker ? previous : next)
       // A save/focus arriving during a request gets a fresh read afterwards.
       if (queued) { queued = false; void load() }
       else timer = setTimeout(load, 5000)
@@ -37,5 +41,5 @@ export function useCardStyle(): CardStyle {
       document.removeEventListener("visibilitychange", visible)
     }
   }, [])
-  return style
+  return appearance
 }

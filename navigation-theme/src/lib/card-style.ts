@@ -11,3 +11,8 @@ export function cardGridClass(style: CardStyle): string {
   if (style === "minimal") return "grid grid-cols-1 items-start gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6"
   return "grid items-start gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
 }
+
+/** The footer walker stays on unless the hub explicitly says false. */
+export function footerWalkerFromConfig(value: unknown): boolean {
+  return !(value && typeof value === "object" && "footerWalker" in value && value.footerWalker === false)
+}

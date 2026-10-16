@@ -1,8 +1,8 @@
 /// <reference types="node" />
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { cardStyleFromConfig, cardGridClass } from "./card-style.ts"
-import { getPublicCardStyle } from "./public-config.ts"
+import { cardStyleFromConfig, cardGridClass, footerWalkerFromConfig } from "./card-style.ts"
+import { getPublicAppearance, getPublicCardStyle } from "./public-config.ts"
 
 test("public card style defaults safely and accepts only the three declared styles", () => {
   for (const value of [undefined, null, "", "dense", {}, 0, "STANDARD"]) {
@@ -64,5 +64,17 @@ test("public appearance aborts a stalled request and respects caller cancellatio
     controller.abort()
     assert.equal(await result, "standard")
     assert.equal(signals[1].aborted, true)
+  } finally { globalThis.fetch = original }
+})
+
+test("footer walker stays on unless the hub says false", async () => {
+  for (const value of [undefined, null, {}, { footerWalker: true }, { footerWalker: "off" }, { cardStyle: "compact" }]) assert.equal(footerWalkerFromConfig(value), true)
+  assert.equal(footerWalkerFromConfig({ footerWalker: false }), false)
+  const original = globalThis.fetch
+  try {
+    globalThis.fetch = async () => Response.json({ cardStyle: "minimal", footerWalker: false })
+    assert.deepEqual(await getPublicAppearance(), { cardStyle: "minimal", footerWalker: false })
+    globalThis.fetch = async () => new Response("unavailable", { status: 503 })
+    assert.deepEqual(await getPublicAppearance(), { cardStyle: "standard", footerWalker: true })
   } finally { globalThis.fetch = original }
 })

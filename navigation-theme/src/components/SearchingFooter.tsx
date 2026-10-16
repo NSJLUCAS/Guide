@@ -8,14 +8,15 @@
  * so it never reads backwards.
  *
  * Under the walk sits the one thing here that is not decoration: a link to the
- * project's repository.
+ * project's repository. The walk can be switched off in the panel; the link
+ * stays.
  */
 const REPOSITORY = "https://github.com/NSJLUCAS/Guide"
 
-export function SearchingFooter() {
+export function SearchingFooter({ walker = true }: { walker?: boolean }) {
   return (
     <footer className="searching-footer mx-auto mt-8 max-w-[1400px] px-4 pb-6 sm:px-6">
-      <div aria-hidden className="relative h-28 overflow-hidden">
+      {walker && <div aria-hidden className="relative h-28 overflow-hidden">
         <div className="absolute inset-x-0 bottom-3 border-t border-dashed" />
         <div className="searching-walker absolute bottom-3 h-24 w-60">
           <span className="searching-ask absolute left-1/2 top-0 ml-3 text-sm font-semibold text-muted-foreground">?</span>
@@ -45,7 +46,7 @@ export function SearchingFooter() {
             </svg>
           </div>
         </div>
-      </div>
+      </div>}
       <a href={REPOSITORY} target="_blank" rel="noopener noreferrer" title="在 GitHub 查看源码"
         className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground">
         <svg aria-hidden viewBox="0 0 16 16" className="size-4" fill="currentColor">

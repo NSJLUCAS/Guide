@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { getNavigationData } from "@/lib/service-api"
 import { cardGridClass, type CardStyle } from "@/lib/card-style"
-import { useCardStyle } from "@/lib/use-card-style"
+import { useAppearance } from "@/lib/use-card-style"
 import { categoriesOf, currentService, filterServices, type Service } from "@/lib/services"
 
 const DARK_MEDIA = matchMedia("(prefers-color-scheme: dark)")
@@ -63,7 +63,7 @@ function useTheme() {
 }
 
 export default function App() {
-  const cardStyle = useCardStyle()
+  const { cardStyle, footerWalker } = useAppearance()
   const [state, setState] = useState<{ services: Service[]; managedCategories?: string[]; loading: boolean; error: string }>({ services: [], loading: true, error: "" })
   const [attempt, setAttempt] = useState(0)
   useEffect(() => {
@@ -91,17 +91,18 @@ export default function App() {
     setState({ services: [], loading: true, error: "" })
     setAttempt(value => value + 1)
   }
-  return <NavigationPage {...state} cardStyle={cardStyle} onRetry={retry} />
+  return <NavigationPage {...state} cardStyle={cardStyle} footerWalker={footerWalker} onRetry={retry} />
 }
 
 /** Cards, filters and statistics only consume converted data; fixtures can still supply it. */
-export function NavigationPage({ services, managedCategories, loading = false, error = "", onRetry, cardStyle = "standard" }: {
+export function NavigationPage({ services, managedCategories, loading = false, error = "", onRetry, cardStyle = "standard", footerWalker = true }: {
   services: readonly Service[]
   managedCategories?: readonly string[]
   loading?: boolean
   error?: string
   onRetry?: () => void
   cardStyle?: CardStyle
+  footerWalker?: boolean
 }) {
   const [dark, toggleTheme] = useTheme()
   const [category, setCategory] = useState<string | null>(null)
@@ -179,7 +180,7 @@ export function NavigationPage({ services, managedCategories, loading = false, e
           </div>
         ) : current === null ? cards : <CategoryDrawer openKey={current}>{cards}</CategoryDrawer>}
       </main>
-      <SearchingFooter />
+      <SearchingFooter walker={footerWalker} />
     </div>
   )
 }
