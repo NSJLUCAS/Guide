@@ -1598,6 +1598,29 @@ pub async fn versions(_: Admin, State(app): State<Shared>) -> Json<Value> {
     }))
 }
 
+/// The Guide release the panel's update card compares against, read from this
+/// project's own releases, never upstream Monitor's. Nothing is downloaded or
+/// installed: the panel links to the release notes and shows the terminal
+/// command, and the operator decides. `latest` is empty where GitHub could not
+/// be reached, which the panel shows as "cannot check" rather than an error.
+///
+/// Shares the cache [`versions`] would use. That route stays off in this fork, so
+/// only `hub` is ever filled here.
+pub async fn guide_release(_: Admin, State(app): State<Shared>) -> Json<Value> {
+    let now = Utc::now().timestamp();
+    let cached = app.releases.lock().unwrap().clone();
+    let holds = if cached.hub.is_empty() { RELEASES_RETRY } else { RELEASES_FRESH };
+    let latest = if cached.read_at != 0 && now - cached.read_at < holds {
+        cached.hub
+    } else {
+        let hub = latest_tag(&app, crate::HUB_REPO).await.unwrap_or_default();
+        *app.releases.lock().unwrap() =
+            crate::Releases { read_at: now, hub: hub.clone(), agent: String::new() };
+        hub
+    };
+    Json(json!({"current": env!("CARGO_PKG_VERSION"), "latest": latest}))
+}
+
 /// Whether the cached lookup still answers. One that returned nothing is held
 /// for [`RELEASES_RETRY`] instead, so a single unreachable moment does not hide
 /// an update for the rest of the day.
@@ -2169,6 +2192,15 @@ mod tests {
                 json!({"cardStyle":"standard", "footerWalker": true})
             );
         }
+    }
+
+    #[tokio::test]
+    async fn guide_release_answers_from_the_cache_while_it_is_fresh() {
+        let app = std::sync::Arc::new(app());
+        *app.releases.lock().unwrap() =
+            crate::Releases { read_at: Utc::now().timestamp(), hub: "9.9.9".into(), agent: String::new() };
+        let Json(value) = guide_release(Admin, State(app.clone())).await;
+        assert_eq!(value, json!({"current": env!("CARGO_PKG_VERSION"), "latest": "9.9.9"}));
     }
 
     #[tokio::test]

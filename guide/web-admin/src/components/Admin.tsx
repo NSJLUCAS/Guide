@@ -6,6 +6,8 @@ import { toast } from "sonner"
 import { Services } from "@/components/Services"
 import { Categories } from "@/components/Categories"
 import { CardAppearance } from "@/components/CardAppearance"
+import { GuideUpdate } from "@/components/GuideUpdate"
+import { copy } from "@/lib/clipboard"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -193,22 +195,6 @@ function DragHandle({ name, disabled, title = "拖动排序", ...events }: React
     >
       <GripVertical className="size-4" />
     </button>
-  )
-}
-
-function copy(text: string, done = "已复制") {
-  // navigator.clipboard exists only in a secure context. Over plain http the
-  // copy command still works from a click, the clipboard filled from its event.
-  if (!navigator.clipboard) {
-    const put = (e: ClipboardEvent) => { e.clipboardData?.setData("text/plain", text); e.preventDefault() }
-    document.addEventListener("copy", put)
-    const ok = document.execCommand("copy")
-    document.removeEventListener("copy", put)
-    return ok ? toast.success(done) : toast.error("复制失败")
-  }
-  navigator.clipboard.writeText(text).then(
-    () => toast.success(done),
-    () => toast.error("复制失败"),
   )
 }
 
@@ -2348,7 +2334,7 @@ function useSettings() {
 // `onSaved` refreshes what the header shows, the site name among it.
 function SettingsTab({ onSaved }: { onSaved: () => void }) {
   const { s, set, save } = useSettings()
-  if (!s) return <CardAppearance />
+  if (!s) return <div className="space-y-5"><CardAppearance /><GuideUpdate /></div>
 
   return (
     <div className="space-y-4">
@@ -2396,13 +2382,14 @@ function SettingsTab({ onSaved }: { onSaved: () => void }) {
         </div>
         {/* 不是 <label>：点文字不该切换开关，只有开关自己可点。
             aria-labelledby 保住读屏软件那边的关联。 */}
+        {/* 存的仍是 public_page：私有模式开 = public_page 关。 */}
         <div className="flex items-center gap-2 text-sm">
           <Switch
             aria-labelledby="public-page-label"
-            checked={s.public_page !== "off"}
-            onCheckedChange={(v) => set("public_page", v ? "on" : "off")}
+            checked={s.public_page === "off"}
+            onCheckedChange={(v) => set("public_page", v ? "off" : "on")}
           />
-          <span id="public-page-label">开放公开状态页，关闭后所有页面需登录</span>
+          <span id="public-page-label">私有模式：开启后必须登录才能看到导航页，未登录的访客会被带到登录页</span>
         </div>
         <div>
           <Button
@@ -2423,6 +2410,7 @@ function SettingsTab({ onSaved }: { onSaved: () => void }) {
         </div>
       </Card>
       <CardAppearance />
+      <GuideUpdate />
     </div>
   )
 }

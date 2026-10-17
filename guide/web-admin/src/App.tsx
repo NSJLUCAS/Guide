@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react"
-import { ExternalLink, LogOut, Moon, Sun } from "lucide-react"
+import { ArrowUpCircle, ExternalLink, LogOut, Moon, Sun } from "lucide-react"
 import { Toaster } from "sonner"
 
 import { Admin } from "@/components/Admin"
@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { api } from "@/lib/api"
 import { normaliseAdminPath as normalise } from "@/lib/navigation"
+import { rememberNext, takeNext } from "@/lib/next"
+import { hasUpdate, loadGuideRelease, releaseNotesUrl, type GuideRelease } from "@/lib/guide-release"
 
 type Me = { authed: boolean; github: boolean; site_name: string; public_page: boolean; site: string }
 
@@ -89,10 +91,16 @@ export default function App() {
   const [dark, toggleTheme] = useTheme()
   const [me, setMe] = useState<Me | null>(null)
   const [meError, setMeError] = useState("")
+  // Arriving from private mode's sign-in redirect: remembered before the first
+  // session check, so whichever way the operator signs in ends on the page.
+  useState(() => rememberNext(location.search))
 
   const loadMe = useCallback(() => {
     return api<Me>("/me")
-      .then((next) => { setMe(next); setMeError("") })
+      .then((next) => {
+        if (next.authed && takeNext()) return location.replace("/")
+        setMe(next); setMeError("")
+      })
       .catch((e: Error) => setMeError(e.message))
   }, [])
   useEffect(() => {
@@ -108,6 +116,16 @@ export default function App() {
     addEventListener("focus", check)
     return () => { clearInterval(timer); removeEventListener("focus", check) }
   }, [me?.authed, loadMe])
+
+  // Checked once per sign-in. A failure only means no button: the settings
+  // page shows the same check with its error.
+  const [release, setRelease] = useState<GuideRelease | null>(null)
+  useEffect(() => {
+    if (!me?.authed) return
+    let active = true
+    loadGuideRelease().then(next => { if (active) setRelease(next) }, () => {})
+    return () => { active = false }
+  }, [me?.authed])
 
   // Keep a mounted panel visible during a transient session-check failure.
   if (!me) return (
@@ -145,6 +163,15 @@ export default function App() {
             </a>
             <span className="text-xs text-muted-foreground">后台</span>
             <div className="flex-1" />
+            {/* Only a link to the release notes: updating stays the operator's
+                call, run from a terminal (设置 → 版本更新 has the command). */}
+            {release && hasUpdate(release) && (
+              <Button variant="outline" size="sm" asChild>
+                <a href={releaseNotesUrl(release.latest)} target="_blank" rel="noopener noreferrer" title="在 GitHub 查看更新内容，更新命令见 设置 → 版本更新">
+                  <ArrowUpCircle /> 新版本 v{release.latest}
+                </a>
+              </Button>
+            )}
             {/* The status page is a separate app, so this is a navigation. */}
             <Button variant="ghost" size="sm" asChild>
               <a href="/">

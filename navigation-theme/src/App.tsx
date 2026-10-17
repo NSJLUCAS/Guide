@@ -8,6 +8,7 @@ import { SearchingFooter } from "@/components/SearchingFooter"
 import { ServiceSummary } from "@/components/ServiceSummary"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { ApiError } from "@/lib/api"
 import { getNavigationData } from "@/lib/service-api"
 import { cardGridClass, type CardStyle } from "@/lib/card-style"
 import { useAppearance } from "@/lib/use-card-style"
@@ -74,6 +75,10 @@ export default function App() {
         const { services, managedCategories } = await getNavigationData(controller.signal)
         if (!controller.signal.aborted) setState({ services, managedCategories, loading: false, error: "" })
       } catch (e) {
+        // Private mode, or a session that ran out while the page was open: the
+        // hub sends a fresh load to sign in, and so does this. Never from under
+        // /admin itself, where a page answering this way would reload forever.
+        if (e instanceof ApiError && e.status === 401 && !location.pathname.startsWith("/admin")) return location.replace("/admin/?next=/")
         if (!controller.signal.aborted) setState({ services: [], loading: false, error: e instanceof Error ? e.message : "请求失败" })
       } finally {
         // Schedule after completion, so a slow request never overlaps its retry.

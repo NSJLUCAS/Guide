@@ -75,6 +75,14 @@ pub async fn serve(State(app): State<Shared>, headers: HeaderMap, uri: Uri) -> R
         return embedded::<AdminAssets>(path, "面板没有构建，在 web-admin/ 下运行 npm run build", known);
     }
 
+    // Private mode: the page itself is withheld from anyone signed out, who is
+    // sent to sign in and brought back here afterwards. Files stay served: they
+    // carry no data, and the API behind the page refuses on its own.
+    if is_page(path) && !app.public_page() && !crate::auth::authed(&app, &headers) {
+        return (StatusCode::SEE_OTHER, [(header::LOCATION, SIGN_IN), (header::CACHE_CONTROL, "no-store")])
+            .into_response();
+    }
+
     let theme = app.db.get("theme").unwrap_or_default();
     if let Some(root) = external_theme(&app.themes, &theme) {
         if let Some(response) = disk(&root, path, known) {
@@ -82,6 +90,16 @@ pub async fn serve(State(app): State<Shared>, headers: HeaderMap, uri: Uri) -> R
         }
     }
     embedded::<DefaultThemeAssets>(path, "默认主题缺失，运行 scripts/theme.sh", known)
+}
+
+/// Where private mode sends a signed-out visitor. The panel honours `next=/`
+/// and nothing else, so this cannot be bent into a redirect off the site.
+const SIGN_IN: &str = "/admin/?next=/";
+
+/// A route the theme answers with its page, as opposed to a file it ships:
+/// the last segment of a file's path has an extension.
+fn is_page(path: &str) -> bool {
+    path == "index.html" || !(is_asset(path) || path.rsplit('/').next().unwrap_or_default().contains('.'))
 }
 
 fn is_api_path(path: &str) -> bool {
@@ -479,6 +497,38 @@ pub fn remove(themes: &Path, short: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn private_mode_sends_signed_out_visitors_to_sign_in_and_back() {
+        let app = std::sync::Arc::new(crate::App::for_test(crate::db::Db::open(":memory:").unwrap()));
+        let get = |path: &'static str, headers: HeaderMap| {
+            let app = app.clone();
+            async move { serve(State(app), headers, Uri::from_static(path)).await }
+        };
+        let redirected = |response: &Response| {
+            response.status() == StatusCode::SEE_OTHER && response.headers()[header::LOCATION] == SIGN_IN
+        };
+
+        assert!(!redirected(&get("/", HeaderMap::new()).await), "public by default");
+        app.db.set("public_page", "off").unwrap();
+        for page in ["/", "/index.html", "/some/route"] {
+            let response = get(page, HeaderMap::new()).await;
+            assert!(redirected(&response), "{page}");
+            assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+        }
+        for file in ["/favicon.svg", "/assets/missing.js", "/admin/", "/admin/services"] {
+            assert!(!redirected(&get(file, HeaderMap::new()).await), "{file}");
+        }
+
+        let token = "signed-in";
+        app.db.create_session(&crate::auth::sha256(token), chrono::Utc::now().timestamp() + 3600).unwrap();
+        let mut signed_in = HeaderMap::new();
+        signed_in.insert(header::COOKIE, format!("{}={token}", crate::auth::COOKIE).parse().unwrap());
+        assert!(!redirected(&get("/", signed_in).await));
+        let mut expired = HeaderMap::new();
+        expired.insert(header::COOKIE, format!("{}=stale", crate::auth::COOKIE).parse().unwrap());
+        assert!(redirected(&get("/", expired).await));
+    }
 
     #[test]
     fn theme_files_cannot_escape_their_dist_directory() {
