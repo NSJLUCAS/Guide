@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "test": "node src/lib/api.test.ts && node src/lib/services.test.ts && node src/lib/navigation.test.ts && node src/lib/icons.test.ts && node src/lib/categories.test.ts && node src/lib/icon-libraries.test.ts && node src/lib/service-icons.test.ts && node src/lib/card-appearance.test.ts && node src/lib/next.test.ts && node src/lib/guide-release.test.ts",
+    "test": "node src/lib/api.test.ts && node src/lib/services.test.ts && node src/lib/navigation.test.ts && node src/lib/icons.test.ts && node src/lib/categories.test.ts && node src/lib/icon-libraries.test.ts && node src/lib/service-icons.test.ts && node src/lib/bulk-paste.test.ts && node src/lib/card-appearance.test.ts && node src/lib/next.test.ts && node src/lib/guide-release.test.ts",
     "test:browser": "node src/tests/services-v3.browser.cjs && node src/tests/services-v32.browser.cjs && node src/tests/services-v33.browser.cjs",
     "preview": "vite preview"
   },

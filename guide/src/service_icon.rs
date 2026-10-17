@@ -1,5 +1,6 @@
 //! Explicit administrator-only favicon discovery. Images are never requested or
 //! stored; all results are HTTPS candidates, not claims of image availability.
+//! The page's own `<title>` comes back too, as a suggested service name.
 
 use std::collections::HashSet;
 use std::future::Future;
@@ -24,6 +25,8 @@ const MAX_HTML: usize = 1024 * 1024;
 const MAX_ICONS: usize = 20;
 const MAX_REDIRECTS: usize = 3;
 const MAX_URL: usize = 2048;
+/// The service name limit: a longer title would only be refused on save.
+const MAX_TITLE: usize = 100;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -34,6 +37,13 @@ struct DiscoverInput {
 #[derive(Debug, Serialize)]
 struct Discovery {
     icons: Vec<Icon>,
+    title: Option<String>,
+}
+
+/// What one pass over the page declares.
+struct Scanned {
+    icons: Vec<Icon>,
+    title: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -236,8 +246,9 @@ where
             }
             break String::from_utf8_lossy(&body).into_owned();
         };
+        let scanned = scan_page(&page, &html);
         let mut icons = Vec::new();
-        for icon in declared_candidates(&page, &html) {
+        for icon in scanned.icons {
             let url = parse_target(&icon.url)?;
             if dns(url).await.is_ok() {
                 icons.push(icon);
@@ -253,21 +264,25 @@ where
                 icons.push(Icon { name: "Favicon".into(), url: fallback.to_string() });
             }
         }
-        Ok(Discovery { icons })
+        Ok(Discovery { icons, title: scanned.title })
     })
     .await
     .map_err(|_| DiscoverError::Timeout)?
 }
 
-/// Bounded tokenizer for link elements. Raw-text elements and comments are
-/// skipped as units so example strings never become icon declarations. `base`
-/// is deliberately ignored; relative paths resolve against the final page URL.
-fn declared_candidates(page: &Url, html: &str) -> Vec<Icon> {
+/// Bounded tokenizer for link elements and the document title. Raw-text
+/// elements and comments are skipped as units so example strings never become
+/// icon declarations. `base` is deliberately ignored; relative paths resolve
+/// against the final page URL. Only a title ahead of `<body>` or any `<svg>`
+/// counts: an inline icon's `<title>` names the icon, not the page.
+fn scan_page(page: &Url, html: &str) -> Scanned {
     let bytes = html.as_bytes();
     let lower = html.to_ascii_lowercase();
     let mut cursor = 0;
     let mut icons = Vec::new();
     let mut seen = HashSet::new();
+    let mut title = None;
+    let mut titled = false;
     while cursor < bytes.len() && icons.len() < MAX_ICONS {
         let Some(offset) = html[cursor..].find('<') else { break };
         cursor += offset;
@@ -314,6 +329,9 @@ fn declared_candidates(page: &Url, html: &str) -> Vec<Icon> {
         if closing {
             continue;
         }
+        if matches!(tag, "body" | "svg") {
+            titled = true;
+        }
         if matches!(
             tag,
             "script"
@@ -339,6 +357,10 @@ fn declared_candidates(page: &Url, html: &str) -> Vec<Icon> {
                 search = boundary;
             }
             let Some(position) = found else { break };
+            if tag == "title" && !titled {
+                title = page_title(&html[cursor..position]);
+                titled = true;
+            }
             cursor = position;
             continue;
         }
@@ -371,7 +393,17 @@ fn declared_candidates(page: &Url, html: &str) -> Vec<Icon> {
             url: url.to_string(),
         });
     }
-    icons
+    Scanned { icons, title }
+}
+
+/// A title as a name field would hold it: entities decoded, whitespace runs
+/// collapsed, control characters dropped and cut to the service name limit.
+fn page_title(raw: &str) -> Option<String> {
+    let decoded = decode_entities(raw);
+    let title = decoded.split_whitespace().collect::<Vec<_>>().join(" ");
+    let title = title.chars().filter(|c| !c.is_control()).take(MAX_TITLE).collect::<String>();
+    let title = title.trim();
+    (!title.is_empty()).then(|| title.to_owned())
 }
 
 fn attributes(raw: &str) -> Vec<(String, String)> {
@@ -541,7 +573,7 @@ mod tests {
                                 count.fetch_add(1, Ordering::SeqCst);
                                 let response = match path {
                                     "/icons" => {
-                                        let body = "<link rel=icon href=https://icon-cdn.test/icon.png><p>hello</p>";
+                                        let body = "<title>Icon page</title><link rel=icon href=https://icon-cdn.test/icon.png><p>hello</p>";
                                         format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{body}", body.len())
                                     }
                                     "/deny" => "HTTP/1.1 302 Found\r\nLocation: http://169.254.169.254/\r\nContent-Length: 0\r\n\r\n".to_owned(),
@@ -600,7 +632,7 @@ mod tests {
           <link rel=stylesheet href=/not-an-icon>
           <link-custom rel=icon href=/not-a-link>
           <link rel=icon href=../favicon.ico?x=1&amp;y=2>"#;
-        let icons = declared_candidates(&page, html);
+        let icons = scan_page(&page, html).icons;
         assert_eq!(
             icons.iter().map(|i| i.url.as_str()).collect::<Vec<_>>(),
             vec![
@@ -609,6 +641,21 @@ mod tests {
                 "https://icon-page.test/icon.png?name=%22x%22",
             ]
         );
+    }
+
+    #[test]
+    fn page_title_is_the_head_title_cleaned_to_a_name() {
+        let page = Url::parse("https://icon-page.test/").unwrap();
+        let title = |html: &str| scan_page(&page, html).title;
+        let html = r#"<!-- <title>comment</title> --><script>'<title>script</title>'</script>
+            <TITLE>
+              FUT.GG &amp; Futbin &#x2014;	 Players  </TITLE><title>second</title>"#;
+        assert_eq!(title(html).as_deref(), Some("FUT.GG & Futbin \u{2014} Players"));
+        assert_eq!(title("<body><svg><title>Close</title></svg>"), None);
+        assert_eq!(title("<head><svg><title>Logo</title></svg><title>Late</title>"), None);
+        assert_eq!(title("<title> \u{1} </title>"), None);
+        assert_eq!(title("<title>unterminated"), None);
+        assert_eq!(title(&format!("<title>{}</title>", "名".repeat(150))).unwrap().chars().count(), MAX_TITLE);
     }
 
     #[test]
@@ -631,7 +678,7 @@ mod tests {
         assert!(parse_target(&format!("https://icon-page.test/{}", "x".repeat(2048))).is_err());
         assert_eq!(parse_target("  https://icon-page.test  ").unwrap().as_str(), "https://icon-page.test/");
         let page = Url::parse("https://icon-page.test/").unwrap();
-        assert!(declared_candidates(&page, "<link rel=icon href=https://169.254.169.254/x><link rel=icon href=https://@icon-cdn.test/x><link rel=icon href=data:image/png,x>").is_empty());
+        assert!(scan_page(&page, "<link rel=icon href=https://169.254.169.254/x><link rel=icon href=https://@icon-cdn.test/x><link rel=icon href=data:image/png,x>").icons.is_empty());
     }
 
     #[test]
@@ -639,8 +686,8 @@ mod tests {
         let page = Url::parse("http://icon-page.test/").unwrap();
         let html =
             (0..100).map(|i| format!("<link rel=icon href=https://icon-cdn.test/{i}>")).collect::<String>();
-        assert_eq!(declared_candidates(&page, &html).len(), MAX_ICONS);
-        assert!(declared_candidates(&page, "<link rel=icon href=/plain-http.png>").is_empty());
+        assert_eq!(scan_page(&page, &html).icons.len(), MAX_ICONS);
+        assert!(scan_page(&page, "<link rel=icon href=/plain-http.png>").icons.is_empty());
     }
 
     #[tokio::test]
@@ -650,6 +697,7 @@ mod tests {
         let result =
             discover_with(&format!("{}/icons", server.url), &client, TIMEOUT, &fixture_dns).await.unwrap();
         assert_eq!(result.icons[0].url, "https://icon-cdn.test/icon.png");
+        assert_eq!(result.title.as_deref(), Some("Icon page"));
         assert_eq!(server.requests.load(Ordering::SeqCst), 1);
         let result =
             discover_with(&format!("{}/redirect", server.url), &client, TIMEOUT, &fixture_dns).await.unwrap();

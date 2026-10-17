@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react"
-import { ArrowDown, ArrowUp, Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react"
+import { ArrowDown, ArrowUp, ClipboardPaste, Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
+import { BulkPaste } from "@/components/BulkPaste"
 import { DragGrip, dragRowClass, useRowDrag, type DropPlace } from "@/components/RowDrag"
 import { IconPicker } from "@/components/IconPicker"
 import { WebsiteIcon } from "@/components/WebsiteIcon"
@@ -18,6 +19,7 @@ import { Switch } from "@/components/ui/switch"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { dropService, serviceApi, serviceValues, type Service, type ServiceInput } from "@/lib/api"
 import { filterAdminServices, serviceHost, serviceTabs } from "@/lib/service-list"
+import { looksLikeLinks } from "@/lib/bulk-paste"
 import { validateIconInput } from "@/lib/icons"
 
 function ServiceForm({ service, categories, onClose, onSave }: {
@@ -116,6 +118,8 @@ export function Services() {
   const [editing, setEditing] = useState<Partial<Service> | null>(null)
   const [deleting, setDeleting] = useState<Service | null>(null)
   const [deleteError, setDeleteError] = useState("")
+  /** The bulk paste dialog's opening text; null while it is closed. */
+  const [pasting, setPasting] = useState<string | null>(null)
 
   const load = useCallback(async (signal?: AbortSignal) => {
     const current = ++generation.current
@@ -146,6 +150,28 @@ export function Services() {
   const current = filter === null || tabs.some(tab => tab.value === filter) ? filter : null
   const visible = filterAdminServices(services ?? [], current, query)
   const drag = useRowDrag((dragged, target, place) => void reorder(dragged, target, place), locked)
+
+  // Ctrl+V anywhere on this page that is not a text field opens the bulk paste
+  // dialog, but only for a clipboard holding addresses and nothing else.
+  const pasteReady = !locked && !editing && !deleting && pasting === null
+  useEffect(() => {
+    if (!pasteReady) return
+    function paste(event: ClipboardEvent) {
+      if (event.target instanceof Element && event.target.closest("input, textarea, select, [contenteditable]:not([contenteditable='false'])")) return
+      const text = event.clipboardData?.getData("text/plain") ?? ""
+      if (!looksLikeLinks(text)) return
+      event.preventDefault()
+      setPasting(text)
+    }
+    document.addEventListener("paste", paste)
+    return () => document.removeEventListener("paste", paste)
+  }, [pasteReady])
+
+  async function added(count: number) {
+    categoriesChanged()
+    toast.success(`已添加 ${count} 个网站`)
+    await load()
+  }
 
   async function save(values: ServiceInput) {
     if (writing.current) return
@@ -203,6 +229,7 @@ export function Services() {
       <div className="flex flex-wrap items-center gap-2">
         <div className="mr-auto"><h2 className="font-semibold">服务</h2><p className="text-xs text-muted-foreground">管理导航网站配置</p></div>
         <Button variant="outline" size="sm" disabled={loading || !!busy} onClick={() => { setOperationError(""); void load() }}><RefreshCw /> 刷新列表</Button>
+        <Button variant="outline" size="sm" disabled={locked} onClick={() => setPasting("")}><ClipboardPaste /> 批量粘贴</Button>
         <Button size="sm" disabled={locked} onClick={() => setEditing({ sort: Math.max(-1, ...(services ?? []).map(s => s.sort)) + 1 })}><Plus /> 添加服务</Button>
       </div>
       {(loadError || operationError) && (
@@ -265,12 +292,13 @@ export function Services() {
               </TableBody>
             </Table>
           </Card>
-          <p className="text-xs text-muted-foreground">拖动左侧手柄调整顺序，松手即保存；鼠标停在网站上可查看完整地址和简介。</p>
+          <p className="text-xs text-muted-foreground">拖动左侧手柄调整顺序，松手即保存；鼠标停在网站上可查看完整地址和简介；在此页按 Ctrl+V 可批量粘贴网址。</p>
         </>
       ) : !loading && !loadError && services !== null ? (
-        <Card className="p-6 text-center text-sm text-muted-foreground"><p>还没有服务</p><p className="mt-1">点击“添加服务”配置第一个网站。</p></Card>
+        <Card className="p-6 text-center text-sm text-muted-foreground"><p>还没有服务</p><p className="mt-1">点击“添加服务”配置第一个网站，或直接按 Ctrl+V 粘贴多个网址。</p></Card>
       ) : null}
       {editing && <ServiceForm service={editing} categories={categoryOptions(services ?? [], managedCategories)} onClose={() => !writing.current && setEditing(null)} onSave={save} />}
+      {pasting !== null && <BulkPaste text={pasting} services={services ?? []} categories={categoryOptions(services ?? [], managedCategories)} onClose={() => setPasting(null)} onAdded={added} />}
       {deleting && (
         <Dialog open onOpenChange={open => !open && !writing.current && setDeleting(null)}>
           <DialogContent className="sm:max-w-md" showCloseButton={!busy}>
