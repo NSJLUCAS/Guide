@@ -29,7 +29,7 @@ type Row = {
   saved: boolean
 }
 
-/** Pages are read four at a time: each read may take the hub's full five seconds. */
+/** Pages are read four at a time: each read may take the hub's full ten seconds. */
 const READS = 4
 
 type Recognized = { rows: Row[]; rejected: string[]; error: "" } | { rows: null; rejected: string[]; error: string }

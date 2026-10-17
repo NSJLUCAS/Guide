@@ -5,6 +5,8 @@
 use std::collections::HashSet;
 use std::future::Future;
 use std::net::IpAddr;
+use std::pin::Pin;
+use std::task::Poll;
 use std::time::Duration;
 
 use axum::extract::rejection::JsonRejection;
@@ -20,7 +22,10 @@ use crate::service_target::{safe_addresses, target_allowed};
 use crate::Shared;
 
 const PATH: &str = "/api/services/discover-icon";
-const TIMEOUT: Duration = Duration::from_secs(5);
+const TIMEOUT: Duration = Duration::from_secs(10);
+/// Some sites turn away a client that does not introduce itself the way
+/// browsers do; this says what it is in the form they accept.
+const AGENT: &str = concat!("Mozilla/5.0 (compatible; Guide/", env!("CARGO_PKG_VERSION"), ")");
 const MAX_HTML: usize = 1024 * 1024;
 const MAX_ICONS: usize = 20;
 const MAX_REDIRECTS: usize = 3;
@@ -73,16 +78,21 @@ fn request_error(error: reqwest::Error) -> DiscoverError {
 impl DiscoverError {
     fn response(self) -> Response {
         // Never expose URLs, resolver errors or reqwest's internal error chain.
+        // A site the hub could not read is 422, never 502 or 504: a CDN or
+        // reverse proxy takes those for its own upstream failing and swaps in
+        // its own page, and the panel would then blame the hub.
         let (status, message) = match self {
             Self::Invalid => (
                 StatusCode::BAD_REQUEST,
                 "请填写有效的 HTTP / HTTPS 网站地址，最多 2048 个字符且不能含登录凭据",
             ),
             Self::Denied => (StatusCode::BAD_REQUEST, "该网站地址不允许用于图标发现"),
-            Self::Fetch => (StatusCode::BAD_GATEWAY, "无法读取网站页面，请检查地址后重试"),
+            Self::Fetch => (StatusCode::UNPROCESSABLE_ENTITY, "无法读取网站页面，请检查地址后重试"),
             Self::TooLarge => (StatusCode::BAD_REQUEST, "网站页面超过 1 MiB，无法发现图标"),
-            Self::Redirects => (StatusCode::BAD_GATEWAY, "网站重定向超过 3 次，无法发现图标"),
-            Self::Timeout => (StatusCode::GATEWAY_TIMEOUT, "图标发现超时，请重试或手动填写图标地址"),
+            Self::Redirects => (StatusCode::UNPROCESSABLE_ENTITY, "网站重定向超过 3 次，无法发现图标"),
+            Self::Timeout => {
+                (StatusCode::UNPROCESSABLE_ENTITY, "读取网站超过 10 秒，请重试或手动填写图标地址")
+            }
         };
         answer(status, message)
     }
@@ -93,7 +103,7 @@ pub fn routes() -> Router<Shared> {
 }
 
 async fn discover_icon(_: Admin, body: Result<Json<DiscoverInput>, JsonRejection>) -> Response {
-    let client = match crate::service_check::client(TIMEOUT) {
+    let client = match crate::service_check::client_as(TIMEOUT, AGENT) {
         Ok(client) => client,
         Err(_) => return DiscoverError::Fetch.response(),
     };
@@ -208,7 +218,12 @@ where
             dns(page.clone()).await?;
             // The shared production client is no_proxy / redirect(none) and its
             // resolver filters the actual addresses used for this connection.
-            let mut response = client.get(page.clone()).send().await.map_err(request_error)?;
+            let mut response = client
+                .get(page.clone())
+                .header(header::ACCEPT, "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8")
+                .send()
+                .await
+                .map_err(request_error)?;
             if response.status().is_redirection() {
                 if redirects >= MAX_REDIRECTS {
                     return Err(DiscoverError::Redirects);
@@ -247,10 +262,14 @@ where
             break String::from_utf8_lossy(&body).into_owned();
         };
         let scanned = scan_page(&page, &html);
+        let mut targets = Vec::with_capacity(scanned.icons.len());
+        for icon in &scanned.icons {
+            targets.push(parse_target(&icon.url)?);
+        }
+        let checks = join_all(targets.into_iter().map(dns).collect()).await;
         let mut icons = Vec::new();
-        for icon in scanned.icons {
-            let url = parse_target(&icon.url)?;
-            if dns(url).await.is_ok() {
+        for (icon, check) in scanned.icons.into_iter().zip(checks) {
+            if check.is_ok() {
                 icons.push(icon);
             }
         }
@@ -268,6 +287,27 @@ where
     })
     .await
     .map_err(|_| DiscoverError::Timeout)?
+}
+
+/// Polls every future together and returns their results in order, so the
+/// candidates' DNS checks share the deadline instead of queuing for it.
+async fn join_all<Fut: Future>(futures: Vec<Fut>) -> Vec<Fut::Output> {
+    let mut pending: Vec<Pin<Box<Fut>>> = futures.into_iter().map(Box::pin).collect();
+    let mut results: Vec<Option<Fut::Output>> = pending.iter().map(|_| None).collect();
+    std::future::poll_fn(|cx| {
+        let mut done = true;
+        for (future, result) in pending.iter_mut().zip(results.iter_mut()) {
+            if result.is_none() {
+                match future.as_mut().poll(cx) {
+                    Poll::Ready(value) => *result = Some(value),
+                    Poll::Pending => done = false,
+                }
+            }
+        }
+        if done { Poll::Ready(()) } else { Poll::Pending }
+    })
+    .await;
+    results.into_iter().map(|result| result.expect("every future has finished")).collect()
 }
 
 /// Bounded tokenizer for link elements and the document title. Raw-text
@@ -659,6 +699,18 @@ mod tests {
             title(&format!("<title>{}</title>", "名".repeat(150))).unwrap().chars().count(),
             MAX_TITLE
         );
+    }
+
+    #[tokio::test]
+    async fn candidate_checks_wait_together_and_keep_their_order() {
+        let start = std::time::Instant::now();
+        let delays = [100, 40, 80, 60, 20];
+        let checks = delays.map(|ms| async move {
+            tokio::time::sleep(Duration::from_millis(ms)).await;
+            ms
+        });
+        assert_eq!(join_all(checks.into()).await, delays);
+        assert!(start.elapsed() < Duration::from_millis(250));
     }
 
     #[test]

@@ -33,12 +33,17 @@ impl Resolve for CheckResolver {
 }
 
 pub(crate) fn client(timeout: Duration) -> Result<Client> {
+    client_as(timeout, "navigation-service-check/1")
+}
+
+/// The same guarded client under another `User-Agent`.
+pub(crate) fn client_as(timeout: Duration, agent: &str) -> Result<Client> {
     Ok(Client::builder()
         .timeout(timeout)
         .redirect(reqwest::redirect::Policy::none())
         .no_proxy()
         .dns_resolver(Arc::new(CheckResolver))
-        .user_agent("navigation-service-check/1")
+        .user_agent(agent)
         .build()?)
 }
 
