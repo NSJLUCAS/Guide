@@ -655,7 +655,10 @@ mod tests {
         assert_eq!(title("<head><svg><title>Logo</title></svg><title>Late</title>"), None);
         assert_eq!(title("<title> \u{1} </title>"), None);
         assert_eq!(title("<title>unterminated"), None);
-        assert_eq!(title(&format!("<title>{}</title>", "名".repeat(150))).unwrap().chars().count(), MAX_TITLE);
+        assert_eq!(
+            title(&format!("<title>{}</title>", "名".repeat(150))).unwrap().chars().count(),
+            MAX_TITLE
+        );
     }
 
     #[test]
