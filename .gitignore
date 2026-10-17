@@ -60,7 +60,7 @@ Desktop.ini
 *.tsbuildinfo
 *.local
 
-# Internal planning, validation output and project notes
+# Local notes
 /docs/superpowers/
 /docs/validation/
 /docs/history/
