@@ -549,7 +549,7 @@ dependencies = [
 
 [[package]]
 name = "guide-hub"
-version = "1.2.5"
+version = "1.2.6"
 dependencies = [
  "anyhow",
  "argon2",
