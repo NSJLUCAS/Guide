@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react"
-import { ArrowDown, ArrowUp, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react"
+import { ArrowDown, ArrowUp, ListChecks, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react"
 import { toast } from "sonner"
+import { CategoryBatch } from "@/components/CategoryBatch"
 import { DragGrip, dragRowClass, useRowDrag, type DropPlace } from "@/components/RowDrag"
 import { dropService } from "@/lib/api"
 import { categoryApi, categoryName, categoriesChanged, type Category } from "@/lib/categories"
@@ -47,6 +48,8 @@ export function Categories() {
   const [editing, setEditing] = useState<Partial<Category> | null>(null)
   const [deleting, setDeleting] = useState<Category | null>(null)
   const [deleteError, setDeleteError] = useState("")
+  /** The category whose services the batch dialog is changing. */
+  const [batching, setBatching] = useState<string | null>(null)
   const writing = useRef(false)
   const generation = useRef(0)
   const load = useCallback(async (signal?: AbortSignal) => {
@@ -102,11 +105,13 @@ export function Categories() {
         <TableCell><div className="flex justify-end">
           <Button size="icon-sm" variant="ghost" className="text-muted-foreground" aria-label={`上移分类 ${category.name}`} disabled={locked || index === 0} onClick={() => void reorder(category.id, categories[index - 1].id, "before")}><ArrowUp /></Button>
           <Button size="icon-sm" variant="ghost" className="text-muted-foreground" aria-label={`下移分类 ${category.name}`} disabled={locked || index === categories.length - 1} onClick={() => void reorder(category.id, categories[index + 1].id, "after")}><ArrowDown /></Button>
+          <Button size="icon-sm" variant="ghost" aria-label={`批量操作分类 ${category.name}`} title="批量公开、私有或更新图标" disabled={locked || category.count === 0} onClick={() => setBatching(category.name)}><ListChecks /></Button>
           <Button size="icon-sm" variant="ghost" aria-label={`编辑分类 ${category.name}`} disabled={locked} onClick={() => setEditing(category)}><Pencil /></Button>
           <Button size="icon-sm" variant="ghost" aria-label={`删除分类 ${category.name}`} disabled={locked} onClick={() => { setDeleteError(""); setDeleting(category) }}><Trash2 /></Button>
         </div></TableCell>
       </TableRow>)}
     </TableBody></Table></Card> : !loading && !loadError && <Card className="p-6 text-center text-sm text-muted-foreground">还没有分类，点击“新增分类”开始添加。</Card>}
+    {batching !== null && <CategoryBatch category={batching} onClose={() => setBatching(null)} />}
     {editing && <CategoryForm category={editing} onClose={() => !writing.current && setEditing(null)} onSave={save} />}
     {deleting && <Dialog open onOpenChange={open => !open && !writing.current && setDeleting(null)}><DialogContent showCloseButton={!busy}><DialogHeader><DialogTitle>删除分类</DialogTitle><DialogDescription>{deleting.count > 0 ? `“${deleting.name}”关联 ${deleting.count} 个网站，请先在服务页迁移关联网站。` : `确认删除空分类“${deleting.name}”？`}</DialogDescription></DialogHeader>{deleteError && <p role="alert" className="text-sm text-destructive">{deleteError}</p>}<DialogFooter><Button variant="ghost" disabled={!!busy} onClick={() => setDeleting(null)}>取消</Button><Button variant="destructive" disabled={!!busy || deleting.count > 0} onClick={() => void remove()}>{busy === "delete" ? "删除中…" : "确认删除"}</Button></DialogFooter></DialogContent></Dialog>}
   </div>
