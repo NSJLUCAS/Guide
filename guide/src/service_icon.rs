@@ -304,7 +304,11 @@ async fn join_all<Fut: Future>(futures: Vec<Fut>) -> Vec<Fut::Output> {
                 }
             }
         }
-        if done { Poll::Ready(()) } else { Poll::Pending }
+        if done {
+            Poll::Ready(())
+        } else {
+            Poll::Pending
+        }
     })
     .await;
     results.into_iter().map(|result| result.expect("every future has finished")).collect()
