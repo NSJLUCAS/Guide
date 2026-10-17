@@ -2,6 +2,8 @@
 
 正式版本和更新日志统一维护在 [GitHub Releases](https://github.com/NSJLUCAS/Guide/releases)。查看[最新稳定版本及 Release Notes](https://github.com/NSJLUCAS/Guide/releases/latest)；今后的发版无需向本文件重复追加记录。
 
+每个正式版本的更新说明写在 [docs/releases/](releases/) 下，文件名与标签一致（如 `v1.2.4.md`），分「新增」「改进」「修复」「升级方式」几节。发布流程会把它作为 GitHub Release 的正文，缺少这个文件的正式版本不会发布。
+
 ## 仓库历史记录
 
 以下保留迁移前已有的更新记录，不再作为持续维护的版本来源。各版本正式说明以对应 GitHub Release 为准。

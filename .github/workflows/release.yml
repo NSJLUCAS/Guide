@@ -176,7 +176,17 @@ jobs:
           sha256sum --check sha256sums.txt
           sh -n install-guide.sh
           python3 ../scripts/verify-release.py . --version "${RELEASE_TAG#v}"
+          # What changed and what was fixed, written for this tag. It heads the
+          # release page above GitHub's generated commit list; a stable release
+          # without one is refused.
           args=(--verify-tag --generate-notes)
+          notes="../docs/releases/${RELEASE_TAG}.md"
+          if [[ -s "$notes" ]]; then
+            args+=(--notes-file "$notes")
+          elif [[ "$RELEASE_TAG" != *-* ]]; then
+            echo "::error::Missing release notes: docs/releases/${RELEASE_TAG}.md" >&2
+            exit 1
+          fi
           if [[ "$RELEASE_TAG" == *-* ]]; then args+=(--prerelease); fi
           gh release create "$RELEASE_TAG" guide-linux-x86_64.tar.gz \
             guide-linux-x86_64.tar.gz.sha256 install-guide.sh sha256sums.txt "${args[@]}"
