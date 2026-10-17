@@ -213,7 +213,11 @@ where
     tokio::time::timeout(timeout, async {
         let mut page = parse_target(raw)?;
         let mut redirects = 0;
-        let html = loop {
+        // A page the hub reached but could not use -- a bot check's 403, an
+        // image, an oversized page, a redirect chain -- still has a site
+        // behind it whose /favicon.ico a browser fetches on its own, so those
+        // end the read without ending discovery.
+        let html = 'read: loop {
             check_target(&page)?;
             dns(page.clone()).await?;
             // The shared production client is no_proxy / redirect(none) and its
@@ -226,19 +230,18 @@ where
                 .map_err(request_error)?;
             if response.status().is_redirection() {
                 if redirects >= MAX_REDIRECTS {
-                    return Err(DiscoverError::Redirects);
+                    break Err(DiscoverError::Redirects);
                 }
-                let location = response
-                    .headers()
-                    .get(header::LOCATION)
-                    .and_then(|value| value.to_str().ok())
-                    .ok_or(DiscoverError::Fetch)?;
+                let location = response.headers().get(header::LOCATION);
+                let Some(location) = location.and_then(|value| value.to_str().ok()) else {
+                    break Err(DiscoverError::Fetch);
+                };
                 page = join_target(&page, location)?;
                 redirects += 1;
                 continue;
             }
             if !response.status().is_success() {
-                return Err(DiscoverError::Fetch);
+                break Err(DiscoverError::Fetch);
             }
             if response.headers().get(header::CONTENT_TYPE).is_some_and(|value| {
                 value.to_str().ok().is_none_or(|value| {
@@ -247,21 +250,25 @@ where
                         && !mime.eq_ignore_ascii_case("application/xhtml+xml")
                 })
             }) {
-                return Err(DiscoverError::Fetch);
+                break Err(DiscoverError::Fetch);
             }
             if response.content_length().is_some_and(|length| length > MAX_HTML as u64) {
-                return Err(DiscoverError::TooLarge);
+                break Err(DiscoverError::TooLarge);
             }
             let mut body = Vec::new();
             while let Some(chunk) = response.chunk().await.map_err(request_error)? {
                 if chunk.len() > MAX_HTML - body.len() {
-                    return Err(DiscoverError::TooLarge);
+                    break 'read Err(DiscoverError::TooLarge);
                 }
                 body.extend_from_slice(&chunk);
             }
-            break String::from_utf8_lossy(&body).into_owned();
+            break Ok(String::from_utf8_lossy(&body).into_owned());
         };
-        let scanned = scan_page(&page, &html);
+        // A blocked page is never scanned: a bot check's title is not the site's name.
+        let (scanned, unread) = match html {
+            Ok(html) => (scan_page(&page, &html), None),
+            Err(error) => (Scanned { icons: Vec::new(), title: None }, Some(error)),
+        };
         let mut targets = Vec::with_capacity(scanned.icons.len());
         for icon in &scanned.icons {
             targets.push(parse_target(&icon.url)?);
@@ -283,7 +290,10 @@ where
                 icons.push(Icon { name: "Favicon".into(), url: fallback.to_string() });
             }
         }
-        Ok(Discovery { icons, title: scanned.title })
+        match unread {
+            Some(error) if icons.is_empty() => Err(error),
+            _ => Ok(Discovery { icons, title: scanned.title }),
+        }
     })
     .await
     .map_err(|_| DiscoverError::Timeout)?
@@ -629,6 +639,10 @@ mod tests {
                                         "HTTP/1.1 302 Found\r\nLocation: /slow-redirect\r\nContent-Length: 0\r\n\r\n".to_owned()
                                     }
                                     "/image" => "HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: 99999999\r\n\r\n".to_owned(),
+                                    "/challenge" => {
+                                        let body = "<title>请稍候…</title><link rel=icon href=https://icon-cdn.test/challenge.png>";
+                                        format!("HTTP/1.1 403 Forbidden\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{body}", body.len())
+                                    }
                                     "/large-length" => format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", MAX_HTML + 1),
                                     "/chunked" => format!("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n{:x}\r\n{}\r\n0\r\n\r\n", MAX_HTML + 1, "x".repeat(MAX_HTML + 1)),
                                     "/slow-body" => {
@@ -789,10 +803,9 @@ mod tests {
             );
         }
         assert_eq!(server.requests.load(Ordering::SeqCst), before + 2);
-        assert_eq!(
-            discover_with(&format!("{}/loop", server.url), &client, TIMEOUT, &fixture_dns).await.unwrap_err(),
-            DiscoverError::Redirects
-        );
+        let result =
+            discover_with(&format!("{}/loop", server.url), &client, TIMEOUT, &fixture_dns).await.unwrap();
+        assert_eq!(result.icons[0].url, format!("{}/favicon.ico", server.url.replacen("http:", "https:", 1)));
         assert_eq!(
             server.requests.load(Ordering::SeqCst),
             before + 6,
@@ -803,11 +816,20 @@ mod tests {
     #[tokio::test]
     async fn content_length_and_chunked_bodies_have_the_same_limit() {
         let server = Server::new().await;
+        let fallback = format!("{}/favicon.ico", server.url.replacen("http:", "https:", 1));
+        let no_https = |url: Url| async move {
+            if url.scheme() == "https" {
+                Err(DiscoverError::Denied)
+            } else {
+                fixture_dns(url).await
+            }
+        };
         for path in ["/large-length", "/chunked"] {
+            let url = format!("{}{path}", server.url);
+            let result = discover_with(&url, &server.client(), TIMEOUT, &fixture_dns).await.unwrap();
+            assert_eq!(result.icons.iter().map(|i| i.url.as_str()).collect::<Vec<_>>(), [fallback.as_str()]);
             assert_eq!(
-                discover_with(&format!("{}{path}", server.url), &server.client(), TIMEOUT, &fixture_dns)
-                    .await
-                    .unwrap_err(),
+                discover_with(&url, &server.client(), TIMEOUT, &no_https).await.unwrap_err(),
                 DiscoverError::TooLarge
             );
         }
@@ -878,12 +900,21 @@ mod tests {
     #[tokio::test]
     async fn non_html_response_is_rejected_before_reading_body() {
         let server = Server::new().await;
-        assert_eq!(
-            discover_with(&format!("{}/image", server.url), &server.client(), TIMEOUT, &fixture_dns)
-                .await
-                .unwrap_err(),
-            DiscoverError::Fetch
-        );
+        let url = format!("{}/image", server.url);
+        let result = discover_with(&url, &server.client(), TIMEOUT, &fixture_dns).await.unwrap();
+        assert_eq!(result.icons.len(), 1);
+        assert!(result.icons[0].url.ends_with("/favicon.ico"));
+        assert_eq!(result.title, None);
+    }
+
+    #[tokio::test]
+    async fn a_bot_check_page_still_offers_the_origin_favicon_but_not_its_own_title_or_icons() {
+        let server = Server::new().await;
+        let url = format!("{}/challenge", server.url);
+        let result = discover_with(&url, &server.client(), TIMEOUT, &fixture_dns).await.unwrap();
+        let urls = result.icons.iter().map(|i| i.url.as_str()).collect::<Vec<_>>();
+        assert_eq!(urls, [format!("{}/favicon.ico", server.url.replacen("http:", "https:", 1))]);
+        assert_eq!(result.title, None);
     }
 
     #[tokio::test]
