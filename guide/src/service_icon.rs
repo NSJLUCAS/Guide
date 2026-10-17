@@ -894,7 +894,8 @@ mod tests {
         assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
         let json: serde_json::Value = response.json().await.unwrap();
         assert_eq!(json["icons"][0]["url"], "https://icon-cdn.test/icon.png");
-        assert_eq!(json.as_object().unwrap().len(), 1);
+        assert_eq!(json["title"], "Icon page");
+        assert_eq!(json.as_object().unwrap().len(), 2);
         assert_eq!(db_snapshot(&app), before);
         task.abort();
     }
