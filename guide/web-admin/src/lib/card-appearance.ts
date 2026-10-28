@@ -11,14 +11,14 @@ export async function saveCardStyle(style: CardStyle): Promise<void> {
   await api("/settings",{method:"PUT",body:JSON.stringify({service_card_style:style})})
   refreshNavigation()
 }
-/** The flashlight walker under the public cards: on unless switched off. */
-export function footerWalker(value: unknown): boolean { return value !== "off" }
-export async function loadAppearance(): Promise<{style: CardStyle; walker: boolean}> {
-  const settings = await api<{service_card_style?:unknown; footer_walker?:unknown}>("/settings")
-  return {style:cardStyle(settings.service_card_style),walker:footerWalker(settings.footer_walker)}
+/** The koi pond behind the public page: on unless switched off. */
+export function backgroundPond(value: unknown): boolean { return value !== "off" }
+export async function loadAppearance(): Promise<{style: CardStyle; pond: boolean}> {
+  const settings = await api<{service_card_style?:unknown; background_pond?:unknown}>("/settings")
+  return {style:cardStyle(settings.service_card_style),pond:backgroundPond(settings.background_pond)}
 }
-export async function saveFooterWalker(on: boolean): Promise<void> {
-  await api("/settings",{method:"PUT",body:JSON.stringify({footer_walker:on?"on":"off"})})
+export async function saveBackgroundPond(on: boolean): Promise<void> {
+  await api("/settings",{method:"PUT",body:JSON.stringify({background_pond:on?"on":"off"})})
   refreshNavigation()
 }
 function refreshNavigation() {

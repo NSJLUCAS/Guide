@@ -27,6 +27,7 @@ The inventory covers the current Cargo.lock and npm lockfiles: 234 Rust packages
 | A Rust/runtime | Locked Rust dependencies | Matching crate files, including Ring Fiat/once_cell and regex Unicode originals; actual binary contents depend on target and enabled features |
 | B embedded frontend | React/ReactDOM and actually used Radix modules | Original locked MIT notices; theme directly uses Slot1.3.3, MIT Copyright(c)2022 WorkOS |
 | B embedded frontend | lucide-react generic UI/Globe; copied shadcn/ui foundations | Lucide ISC plus Feather MIT; shadcn MIT originals collected |
+| B embedded frontend | ascii-pond background animation, copied unchanged into `navigation-theme/src/vendor/ascii-pond/` from https://github.com/stqfdyr/ascii-pond at 822a3c95167f79f0905720a2e6793cb4a64eda55 | MIT, Copyright (c) 2026 stqfdyr; license text kept beside the copied files |
 | B embedded frontend | Admin Dialog/Select/Popover use react-remove-scroll2.7.2 and bar2.3.8 | Exact-version license evidence gap below; no fabricated license |
 | C build/dev only | Vite/TypeScript/oxlint/Tailwind/PostCSS/source-map-js/nanoid/native bindings | Locked package original notices. PostCSS8.5.29/nanoid3.3.20 MIT; source-map-js1.2.2 BSD-3-Clause |
 | C retained source, outside current App | country-flag-icons, Recharts/Victory/D3 in unused NodeCard/NodeDetail | Existing MIT and ISC/contributor notices retained conservatively; not present in current production App assets |

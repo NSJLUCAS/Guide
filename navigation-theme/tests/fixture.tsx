@@ -4,7 +4,8 @@ import { mockServices } from "../src/lib/mock-services"
 import "../src/index.css"
 
 // Browser-only fixtures. Not imported by the production entry point.
-const variant = new URLSearchParams(location.search).get("fixture")
+const params = new URLSearchParams(location.search)
+const variant = params.get("fixture")
 const services = variant === "empty" ? [] : variant === "icons" ? [
   { ...mockServices[0], icon: "https://icons.example.com/broken.png" },
   { ...mockServices[1], icon: "unknown-brand" },
@@ -12,4 +13,4 @@ const services = variant === "empty" ? [] : variant === "icons" ? [
   { ...mockServices[3], icon: "constructor" },
 ] : mockServices
 
-createRoot(document.getElementById("root")!).render(<NavigationPage services={services} />)
+createRoot(document.getElementById("root")!).render(<NavigationPage services={services} backgroundPond={params.has("pond")} />)

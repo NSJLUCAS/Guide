@@ -12,7 +12,7 @@ export function cardGridClass(style: CardStyle): string {
   return "grid items-start gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
 }
 
-/** The footer walker stays on unless the hub explicitly says false. */
-export function footerWalkerFromConfig(value: unknown): boolean {
-  return !(value && typeof value === "object" && "footerWalker" in value && value.footerWalker === false)
+/** The background pond stays on unless the hub explicitly says false. */
+export function backgroundPondFromConfig(value: unknown): boolean {
+  return !(value && typeof value === "object" && "backgroundPond" in value && value.backgroundPond === false)
 }

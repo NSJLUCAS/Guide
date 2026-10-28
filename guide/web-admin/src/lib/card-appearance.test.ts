@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { cardStyle, footerWalker, loadAppearance, loadCardStyle, saveCardStyle, saveFooterWalker } from "./card-appearance.ts"
+import { backgroundPond, cardStyle, loadAppearance, loadCardStyle, saveBackgroundPond, saveCardStyle } from "./card-appearance.ts"
 test("外观默认标准且非法读取回退，三种设置使用服务器存储", async () => {
   assert.equal(cardStyle(undefined),"standard")
   assert.equal(cardStyle("huge"),"standard")
@@ -17,20 +17,20 @@ test("外观默认标准且非法读取回退，三种设置使用服务器存�
     await assert.rejects(saveCardStyle("bad" as never),/无效/)
   } finally {globalThis.fetch=original}
 })
-test("页脚动画默认开启，只写 footer_walker", async () => {
-  assert.equal(footerWalker(undefined),true)
-  assert.equal(footerWalker("on"),true)
-  assert.equal(footerWalker("off"),false)
+test("背景动画默认开启，只写 background_pond", async () => {
+  assert.equal(backgroundPond(undefined),true)
+  assert.equal(backgroundPond("on"),true)
+  assert.equal(backgroundPond("off"),false)
   const original=globalThis.fetch
   let stored: unknown
   globalThis.fetch=async(url,init)=>{
     assert.equal(url,"/api/settings")
-    if(init?.method==="PUT") { const patch=JSON.parse(String(init.body));assert.deepEqual(Object.keys(patch),["footer_walker"]);stored=patch.footer_walker;return Response.json({ok:true}) }
-    return Response.json({service_card_style:"compact",footer_walker:stored})
+    if(init?.method==="PUT") { const patch=JSON.parse(String(init.body));assert.deepEqual(Object.keys(patch),["background_pond"]);stored=patch.background_pond;return Response.json({ok:true}) }
+    return Response.json({service_card_style:"compact",background_pond:stored})
   }
   try {
-    assert.deepEqual(await loadAppearance(),{style:"compact",walker:true})
-    await saveFooterWalker(false);assert.equal(stored,"off");assert.deepEqual(await loadAppearance(),{style:"compact",walker:false})
-    await saveFooterWalker(true);assert.equal(stored,"on")
+    assert.deepEqual(await loadAppearance(),{style:"compact",pond:true})
+    await saveBackgroundPond(false);assert.equal(stored,"off");assert.deepEqual(await loadAppearance(),{style:"compact",pond:false})
+    await saveBackgroundPond(true);assert.equal(stored,"on")
   } finally {globalThis.fetch=original}
 })

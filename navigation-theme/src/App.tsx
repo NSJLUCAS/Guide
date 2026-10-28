@@ -4,8 +4,9 @@ import { Moon, Search, Sun, Wrench, X } from "lucide-react"
 import { CategoryDrawer } from "@/components/CategoryDrawer"
 import { GuideMark } from "@/components/GuideMark"
 import { ServiceCard } from "@/components/ServiceCard"
-import { SearchingFooter } from "@/components/SearchingFooter"
 import { ServiceSummary } from "@/components/ServiceSummary"
+import { SiteFooter } from "@/components/SiteFooter"
+import { PondBackground } from "@/components/PondBackground"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ApiError } from "@/lib/api"
@@ -64,7 +65,7 @@ function useTheme() {
 }
 
 export default function App() {
-  const { cardStyle, footerWalker } = useAppearance()
+  const { cardStyle, backgroundPond } = useAppearance()
   const [state, setState] = useState<{ services: Service[]; managedCategories?: string[]; loading: boolean; error: string }>({ services: [], loading: true, error: "" })
   const [attempt, setAttempt] = useState(0)
   useEffect(() => {
@@ -96,18 +97,18 @@ export default function App() {
     setState({ services: [], loading: true, error: "" })
     setAttempt(value => value + 1)
   }
-  return <NavigationPage {...state} cardStyle={cardStyle} footerWalker={footerWalker} onRetry={retry} />
+  return <NavigationPage {...state} cardStyle={cardStyle} backgroundPond={backgroundPond} onRetry={retry} />
 }
 
 /** Cards, filters and statistics only consume converted data; fixtures can still supply it. */
-export function NavigationPage({ services, managedCategories, loading = false, error = "", onRetry, cardStyle = "standard", footerWalker = true }: {
+export function NavigationPage({ services, managedCategories, loading = false, error = "", onRetry, cardStyle = "standard", backgroundPond = false }: {
   services: readonly Service[]
   managedCategories?: readonly string[]
   loading?: boolean
   error?: string
   onRetry?: () => void
   cardStyle?: CardStyle
-  footerWalker?: boolean
+  backgroundPond?: boolean
 }) {
   const [dark, toggleTheme] = useTheme()
   const [category, setCategory] = useState<string | null>(null)
@@ -133,6 +134,7 @@ export function NavigationPage({ services, managedCategories, loading = false, e
   )
   return (
     <div className="min-h-svh">
+      {backgroundPond && <PondBackground dark={dark} />}
       <header className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur">
         <div className="mx-auto flex max-w-[1400px] items-center gap-3 px-4 py-3 sm:px-6">
           <h1><button className="flex items-center gap-2 font-semibold transition-opacity hover:opacity-70" onClick={reset}><GuideMark className="size-5" />Guide</button></h1>
@@ -148,7 +150,7 @@ export function NavigationPage({ services, managedCategories, loading = false, e
       </header>
 
       <main className="mx-auto max-w-[1400px] space-y-5 px-4 py-4 sm:px-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div data-pond-avoid className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div role="group" aria-label="网站分类" className="-mx-1 flex min-w-0 flex-1 gap-1 overflow-x-auto px-1 pb-1">
             {tabs.map(({ value, label, count }) => (
               <Button key={value === null ? "*" : `=${value}`} aria-pressed={current === value}
@@ -170,22 +172,22 @@ export function NavigationPage({ services, managedCategories, loading = false, e
         {loading ? (
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-hidden>{Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-24" />)}</div>
         ) : !error && <ServiceSummary services={shown} />}
-        <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+        <div data-pond-avoid className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
           <p role="status" aria-live="polite">{loading ? "加载网站中…" : error ? "网站数据暂不可用" : query.trim() ? `找到 ${shown.length} 个网站` : `共 ${shown.length} 个网站`}</p>
           <p>状态由 Hub 每分钟检测</p>
         </div>
         {loading ? (
           <div className={cardGridClass(cardStyle)} aria-hidden>{Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className={cardStyle === "standard" ? "h-56" : cardStyle === "compact" ? "h-36" : "h-24"} />)}</div>
         ) : error ? (
-          <div role="alert" className="py-10 text-center text-sm text-destructive"><p>加载失败：{error}</p><Button variant="outline" size="sm" className="mt-2" onClick={onRetry}>重试</Button></div>
+          <div role="alert" data-pond-avoid className="py-10 text-center text-sm text-destructive"><p>加载失败：{error}</p><Button variant="outline" size="sm" className="mt-2" onClick={onRetry}>重试</Button></div>
         ) : shown.length === 0 ? (
-          <div className="py-10 text-center text-sm text-muted-foreground">
+          <div data-pond-avoid className="py-10 text-center text-sm text-muted-foreground">
             <p>{services.length === 0 ? "还没有网站" : "没有匹配的网站"}</p>
             {services.length > 0 && <Button variant="ghost" size="sm" className="mt-2" onClick={reset}>清除筛选</Button>}
           </div>
         ) : current === null ? cards : <CategoryDrawer openKey={current}>{cards}</CategoryDrawer>}
       </main>
-      <SearchingFooter walker={footerWalker} />
+      <SiteFooter />
     </div>
   )
 }

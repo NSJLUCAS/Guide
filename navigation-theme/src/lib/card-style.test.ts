@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { cardStyleFromConfig, cardGridClass, footerWalkerFromConfig } from "./card-style.ts"
+import { cardStyleFromConfig, cardGridClass, backgroundPondFromConfig } from "./card-style.ts"
 import { getPublicAppearance, getPublicCardStyle } from "./public-config.ts"
 
 test("public card style defaults safely and accepts only the three declared styles", () => {
@@ -67,14 +67,14 @@ test("public appearance aborts a stalled request and respects caller cancellatio
   } finally { globalThis.fetch = original }
 })
 
-test("footer walker stays on unless the hub says false", async () => {
-  for (const value of [undefined, null, {}, { footerWalker: true }, { footerWalker: "off" }, { cardStyle: "compact" }]) assert.equal(footerWalkerFromConfig(value), true)
-  assert.equal(footerWalkerFromConfig({ footerWalker: false }), false)
+test("background pond stays on unless the hub says false", async () => {
+  for (const value of [undefined, null, {}, { backgroundPond: true }, { backgroundPond: "off" }, { cardStyle: "compact" }]) assert.equal(backgroundPondFromConfig(value), true)
+  assert.equal(backgroundPondFromConfig({ backgroundPond: false }), false)
   const original = globalThis.fetch
   try {
-    globalThis.fetch = async () => Response.json({ cardStyle: "minimal", footerWalker: false })
-    assert.deepEqual(await getPublicAppearance(), { cardStyle: "minimal", footerWalker: false })
+    globalThis.fetch = async () => Response.json({ cardStyle: "minimal", backgroundPond: false })
+    assert.deepEqual(await getPublicAppearance(), { cardStyle: "minimal", backgroundPond: false })
     globalThis.fetch = async () => new Response("unavailable", { status: 503 })
-    assert.deepEqual(await getPublicAppearance(), { cardStyle: "standard", footerWalker: true })
+    assert.deepEqual(await getPublicAppearance(), { cardStyle: "standard", backgroundPond: true })
   } finally { globalThis.fetch = original }
 })

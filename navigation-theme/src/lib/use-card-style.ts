@@ -2,12 +2,12 @@ import { useEffect, useState } from "react"
 import { getPublicAppearance, type Appearance } from "./public-config.ts"
 
 /**
- * The hub's public appearance settings. The walker starts hidden until the hub
- * answers, so a visitor never sees him appear and vanish on a hub that has
- * switched him off.
+ * The hub's public appearance settings. The pond starts hidden until the hub
+ * answers, so a visitor never sees it appear and vanish on a hub that has
+ * switched it off.
  */
 export function useAppearance(): Appearance {
-  const [appearance, setAppearance] = useState<Appearance>({ cardStyle: "standard", footerWalker: false })
+  const [appearance, setAppearance] = useState<Appearance>({ cardStyle: "standard", backgroundPond: false })
   useEffect(() => {
     const controller = new AbortController()
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -21,7 +21,7 @@ export function useAppearance(): Appearance {
       const next = await getPublicAppearance(controller.signal)
       loading = false
       if (controller.signal.aborted) return
-      setAppearance(previous => previous.cardStyle === next.cardStyle && previous.footerWalker === next.footerWalker ? previous : next)
+      setAppearance(previous => previous.cardStyle === next.cardStyle && previous.backgroundPond === next.backgroundPond ? previous : next)
       // A save/focus arriving during a request gets a fresh read afterwards.
       if (queued) { queued = false; void load() }
       else timer = setTimeout(load, 5000)
